@@ -42,7 +42,7 @@ def compute_ap(ranks, nres):
     return ap
 
 
-def compute_map(ranks, gnd, kappas=[]):
+def compute_map(ranks, gnd, kappas=[None]):
     """
     Computes the mAP for a given set of returned results.
          Usage:
@@ -81,13 +81,14 @@ def compute_map(ranks, gnd, kappas=[]):
         except:
             qgndj = np.empty(0)
 
+
         # sorted positions of positive and junk images (0 based)
         pos = np.arange(ranks.shape[0])[np.in1d(ranks[:, i], qgnd)]
         junk = np.arange(ranks.shape[0])[np.in1d(ranks[:, i], qgndj)]
 
         k = 0;
         ij = 0;
-        if len(junk):
+        if len(junk) > 0:
             # decrease positions of positives based on the number of
             # junk images appearing before them
             ip = 0

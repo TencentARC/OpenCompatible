@@ -11,14 +11,6 @@ from utils import read_json, write_json
 
 class ConfigParser:
     def __init__(self, config, resume=None, modification=None, run_id=None):
-        """
-        class to parse configuration json file. Handles hyperparameters for training, initializations of modules, checkpoint saving
-        and logging module.
-        :param config: Dict containing configurations, hyperparameters for training. contents of `config.json` file for example.
-        :param resume: String, path to the checkpoint being loaded.
-        :param modification: Dict keychain:value, specifying position values to be replaced from config dict.
-        :param run_id: Unique Identifier for training processes. Used to save checkpoints and training log. Timestamp is being used as default
-        """
         # load config file and apply modification
         self._config = _update_config(config, modification)
         self.resume = resume

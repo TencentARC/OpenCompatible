@@ -62,10 +62,12 @@ def main_worker(device, ngpus_per_node, config):
         train_loader, class_num = data_loader.train_loader, data_loader.class_num
         # load evaluation set
         data_loader = module_data.GLDv2EvalDataLoader(config)
-        eval_query_loader, eval_gallery_loader, eval_query_gts = data_loader.query_loader, data_loader.gallery_loader, data_loader.query_gts
+        eval_query_loader, eval_gallery_loader, eval_query_gts = data_loader.query_loader, \
+                                                                 data_loader.gallery_loader, data_loader.query_gts
         # load test set
         data_loader = module_data.GLDv2TestDataLoader(config)
-        test_query_loader, test_gallery_loader, test_query_gts = data_loader.query_loader, data_loader.gallery_loader, data_loader.query_gts
+        test_query_loader, test_gallery_loader, test_query_gts = data_loader.query_loader, \
+                                                                 data_loader.gallery_loader, data_loader.query_gts
 
     elif config.dataset.type == 'face':
         data_loader = module_data.MS1Mv3TrainDataLoader(config)
@@ -95,15 +97,15 @@ def main_worker(device, ngpus_per_node, config):
     criterion['base'] = nn.CrossEntropyLoss().cuda()
     if config.dataset.type == 'landmark':
         trainer = LandmarkTrainer(model,
-                                  backward_compatible_training=False,
-                                  train_loader=train_loader,
-                                  criterion=criterion,
-                                  optimizer=optimizer,
-                                  grad_scaler=grad_scaler,
-                                  config=config,
-                                  device=device,
-                                  validation_loader_list=[eval_query_loader, eval_gallery_loader, eval_query_gts],
-                                  test_loader_list=[test_query_loader, test_gallery_loader, test_query_gts],
+                                  backward_compatible_training=False, \
+                                  train_loader=train_loader, \
+                                  criterion=criterion, \
+                                  optimizer=optimizer, \
+                                  grad_scaler=grad_scaler, \
+                                  config=config, \
+                                  device=device, \
+                                  validation_loader_list=[eval_query_loader, eval_gallery_loader, eval_query_gts], \
+                                  test_loader_list=[test_query_loader, test_gallery_loader, test_query_gts], \
                                   lr_scheduler=lr_scheduler)
     elif config.dataset_type == 'face':
         trainer = FaceTrainer()

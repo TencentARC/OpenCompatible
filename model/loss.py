@@ -9,7 +9,6 @@ import torch.nn.functional as F
 import torch.distributed as dist
 from typing import Optional, Sequence
 
-
 __all__ = ['BackwardCompatibleLoss']
 
 
@@ -29,22 +28,24 @@ def euclidean_dist(x, y):
     dist_m = torch.pow(x, 2).sum(dim=1, keepdim=True).expand(m, n) + \
            torch.pow(y, 2).sum(dim=1, keepdim=True).expand(n, m).t()
     dist_m.addmm_(x, y.t(), beta=1, alpha=-2)
-    dist_m = dist_m.clamp(min=1e-12).sqrt() # for numerical stability
+    dist_m = dist_m.clamp(min=1e-12).sqrt()  # for numerical stability
     return dist_m
 
-def calculate_loss(feat_new, feat_old, feat_new_large, feat_old_large, masks, loss_type, temp, criterion, loss_lambda=[], topk_neg=-1):
+
+def calculate_loss(feat_new, feat_old, feat_new_large, feat_old_large, \
+                   masks, loss_type, temp, criterion, loss_lambda=[1,1], topk_neg=-1):
     B, D = feat_new.shape
     labels_idx = torch.arange(B) + torch.distributed.get_rank() * B
     if feat_new_large is None:
         feat_new_large = feat_new
         feat_old_large = feat_old
 
-    if (loss_type=='contra'):
+    if (loss_type == 'contra'):
         logits_n2o_pos = torch.bmm(feat_new.view(B, 1, D), feat_old.view(B, D, 1))  # B*1
         logits_n2o_pos = torch.squeeze(logits_n2o_pos, 1)
         logits_n2o_neg = torch.mm(feat_new, feat_old_large.permute(1, 0))  # B*B
         logits_n2o_neg = logits_n2o_neg - masks * 1e9
-        if topk_neg>0:
+        if topk_neg > 0:
             logits_n2o_neg = torch.topk(logits_n2o_neg, topk_neg, dim=1)[0]
         logits_all = torch.cat((logits_n2o_pos, logits_n2o_neg), 1)   # B*(1+k)
         logits_all /= temp
@@ -58,7 +59,7 @@ def calculate_loss(feat_new, feat_old, feat_new_large, feat_old_large, masks, lo
         logits_n2o_neg = logits_n2o_neg - masks * 1e9
         logits_n2n_neg = torch.mm(feat_new, feat_new_large.permute(1, 0))   # B*B
         logits_n2n_neg = logits_n2n_neg - masks * 1e9
-        if topk_neg>0:
+        if topk_neg > 0:
             logits_n2o_neg = torch.topk(logits_n2o_neg, topk_neg, dim=1)[0]
             logits_n2n_neg = torch.topk(logits_n2n_neg, topk_neg, dim=1)[0]
         logits_all = torch.cat((logits_n2o_pos, logits_n2o_neg, logits_n2n_neg), 1)   # B*(1+2B)
@@ -73,7 +74,7 @@ def calculate_loss(feat_new, feat_old, feat_new_large, feat_old_large, masks, lo
         logits_n2o_neg = logits_n2o_neg - masks * 1e9
         logits_n2n_neg = torch.mm(feat_new, feat_new_large.permute(1, 0))   # B*B
         logits_n2n_neg = logits_n2n_neg - masks * 1e9
-        if topk_neg>0:
+        if topk_neg > 0:
             logits_n2o_neg = torch.topk(logits_n2o_neg, topk_neg, dim=1)[0]
             logits_n2n_neg = torch.topk(logits_n2n_neg, topk_neg, dim=1)[0]
 
@@ -88,7 +89,7 @@ def calculate_loss(feat_new, feat_old, feat_new_large, feat_old_large, masks, lo
         logits_all /= temp
         loss += criterion(logits_all, labels_idx) * loss_lambda[1]
 
-    elif (loss_type=='triplet'):
+    elif (loss_type == 'triplet'):
         logits_n2o = euclidean_dist(feat_new, feat_old_large)
         logits_n2o_pos = torch.gather(logits_n2o, 1, labels_idx.view(-1, 1).cuda())
 
@@ -101,8 +102,7 @@ def calculate_loss(feat_new, feat_old, feat_new_large, feat_old_large, masks, lo
         hard_labels_idx = torch.ones_like(logits_n2o_pos)
         loss = criterion(logits_n2o_neg, logits_n2o_pos, hard_labels_idx) * loss_lambda[0]
 
-
-    elif (loss_type=='triplet_reg_free'):
+    elif (loss_type == 'triplet_reg_free'):
         logits_n2o = euclidean_dist(feat_new, feat_old_large)
         logits_n2o_pos = torch.gather(logits_n2o, 1, labels_idx.view(-1, 1).cuda())
 
@@ -118,11 +118,15 @@ def calculate_loss(feat_new, feat_old, feat_new_large, feat_old_large, masks, lo
         hard_labels_idx = torch.ones_like(logits_n2o_pos)
         loss = criterion(logits_n2o_neg, logits_n2o_pos, hard_labels_idx) * loss_lambda[0]
         loss += criterion(logits_n2n_neg, logits_n2o_pos, hard_labels_idx) * loss_lambda[1]
-    elif (loss_type=='l2'):
+
+    elif (loss_type == 'l2'):
         loss = criterion(feat_new, feat_old) * loss_lambda[0]
+
     else:
         loss = 0.
+
     return loss
+
 
 class BackwardCompatibleLoss(nn.Module):
     def __init__(self, temp=0.05, margin=0.8, topk_neg=-1, loss_type='contra', loss_lambda=[1.0], gather_all=True):
@@ -135,7 +139,7 @@ class BackwardCompatibleLoss(nn.Module):
         elif (loss_type == ['contra_reg_free_dynamic']):
             self.criterion = nn.CrossEntropyLoss(reduction='none').cuda()
         elif (loss_type in ['triplet', 'triplet_reg_free']):
-            assert topk_neg >0, \
+            assert topk_neg > 0, \
                 "Please select top-k negatives for triplet loss"
             # not use nn.TripletMarginLoss()
             self.criterion = nn.MarginRankingLoss(margin=margin).cuda()
@@ -159,14 +163,12 @@ class BackwardCompatibleLoss(nn.Module):
             targets_large = gather_tensor(targets)
             batch_size_large = z_large.size(0)
             current_gpu = dist.get_rank()
-            masks = targets_large.expand(batch_size_large, batch_size_large).eq(targets_large.expand(batch_size_large, batch_size_large).t())
-            masks = masks[current_gpu*batch_size:(current_gpu+1)*batch_size,:]  # size: (B, B*n_gpus)
+            masks = targets_large.expand(batch_size_large, batch_size_large).eq(targets_large.expand(batch_size_large, \
+                                                                                                     batch_size_large).t())
+            masks = masks[current_gpu*batch_size:(current_gpu+1)*batch_size,:]   # size: (B, B*n_gpus)
         else:
             z_large, z_old_large = None, None
             masks = targets.expand(batch_size, batch_size).eq(targets.expand(batch_size, batch_size).t())
-
-        # masks = targets.expand(B, B).eq(targets.expand(B, B).t())   # need to be modified    size: (B,B*n_gpus)
-        # masks = torch.zeros(B, B_large).scatter_(1, targets_large.unsqueeze(1), 1).cuda()
 
         # compute loss
         loss_comp = calculate_loss(z, z_old, z_large, z_old_large, masks, self.loss_type, self.temperature,

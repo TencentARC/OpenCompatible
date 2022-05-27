@@ -45,12 +45,12 @@ class GLDv2EvalDataset(DataLoader):
         query_img_list = os.path.join(args.trainer.img_list_dir, "gldv2_public_query_list.txt")
         gallery_img_list = os.path.join(args.trainer.img_list_dir, "gldv2_gallery_list.txt")
         query_gts_list = os.path.join(args.trainer.img_list_dir, "gldv2_public_query_gt.txt")
-        self.query_loader, self.gallery_loader, self.query_gts = GLDv2_test_dataloader(query_dir, query_img_list,
-                                                                                       gallery_dir,
-                                                                                       gallery_img_list, query_gts_list,
-                                                                                       transform=val_trans,
-                                                                                       batch_size=args.trainer.batch_size,
-                                                                                       num_workers=args.trainer.workers,
+        self.query_loader, self.gallery_loader, self.query_gts = GLDv2_test_dataloader(query_dir, query_img_list, \
+                                                                                       gallery_dir, \
+                                                                                       gallery_img_list, query_gts_list, \
+                                                                                       transform=val_trans, \
+                                                                                       batch_size=args.trainer.batch_size, \
+                                                                                       num_workers=args.trainer.workers, \
                                                                                        distributed=args.distributed)
 
 
@@ -70,12 +70,12 @@ class GLDv2TestDataset(DataLoader):
         query_img_list = os.path.join(args.trainer.img_list_dir, "gldv2_private_query_list.txt")
         gallery_img_list = os.path.join(args.trainer.img_list_dir, "gldv2_gallery_list.txt")
         query_gts_list = os.path.join(args.trainer.img_list_dir, "gldv2_private_query_gt.txt")
-        self.query_loader, self.gallery_loader, self.query_gts = GLDv2_test_dataloader(query_dir, query_img_list,
-                                                                                       gallery_dir,
-                                                                                       gallery_img_list, query_gts_list,
-                                                                                       transform=val_trans,
-                                                                                       batch_size=args.trainer.batch_size,
-                                                                                       num_workers=args.trainer.workers,
+        self.query_loader, self.gallery_loader, self.query_gts = GLDv2_test_dataloader(query_dir, query_img_list, \
+                                                                                       gallery_dir, \
+                                                                                       gallery_img_list, query_gts_list, \
+                                                                                       transform=val_trans, \
+                                                                                       batch_size=args.trainer.batch_size, \
+                                                                                       num_workers=args.trainer.workers, \
                                                                                        distributed=args.distributed)
 
 
@@ -94,12 +94,13 @@ class ROxfordTestDataLoader(DataLoader):
         pkl_path = os.path.join(args.test_dataset.data_dir, f"{test_dataset_name}.pkl")
 
         query_dir, gallery_dir = args.test_dataset.data_dir, args.test_dataset.data_dir
-        self.query_loader, self.gallery_loader, self.query_gts = ROxford_test_dataloader(pkl_path, query_dir,
-                                                                                         gallery_dir,
-                                                                                         transform=val_trans,
-                                                                                         batch_size=args.trainer.batch_size,
-                                                                                         num_workers=args.trainer.workers,
-                                                                                         distributed=args.distributed)
+        self.query_loader, self.gallery_loader, self.query_gts = ROxford_test_dataloader(
+                                                                 pkl_path, query_dir, \
+                                                                 gallery_dir, \
+                                                                 transform=val_trans, \
+                                                                 batch_size=args.trainer.batch_size, \
+                                                                 num_workers=args.trainer.workers, \
+                                                                 distributed=args.distributed)
 
 
 class MS1Mv3TrainDataLoader(DataLoader):

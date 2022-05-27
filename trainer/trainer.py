@@ -131,7 +131,7 @@ class LandmarkTrainer(BaseTrainer):
         losses_all = AverageMeter('Total Loss', ':.4e')
         progress = ProgressMeter(
             len(self.train_loader),
-            [batch_time, data_time, losses_all, losses_cls, losses_back_comp_p2c, losses_back_comp_p2p,],
+            [batch_time, data_time, losses_all, losses_cls, losses_back_comp_p2c, losses_back_comp_p2p],
             prefix=f"Epoch:[{epoch + 1}/{self.config.epochs}]  ", logger=self.logger,
         )
 

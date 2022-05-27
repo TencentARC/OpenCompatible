@@ -107,7 +107,8 @@ def split_roxford_rparis_data(input_file, classes, percent=0.5, train_or_test='t
             line_splits = line.split(" ")
             current_class = line_splits[0].split("_")[0] if dataset == 'roxford' else line_splits[0].split("_")[1]
             # Initialization
-            if flag_class == "#": flag_class = current_class
+            if flag_class == "#":
+                flag_class = current_class
             if current_class != flag_class:
                 current_index += 1
                 start_indexes[current_index] = count
@@ -160,11 +161,12 @@ if __name__ == '__main__':
     # split_datasets_data(input_file, classes=365, percent=0.5, train_or_test='test', dataset='places')
 
     # input_file = '../data/market1501/market1501_train_old_30percent.txt'
-    # # split_datasets_data(input_file, classes=1502, percent=0.3, train_or_test='train', dataset='market1501')
+    # split_datasets_data(input_file, classes=1502, percent=0.3, train_or_test='train', dataset='market1501')
     # refine_txt(input_file)
 
     # input_file = './data/roxford_img_list.txt'
-    # split_roxford_rparis_data(input_file = input_file, classes=17, percent=0.5, train_or_test = 'test', dataset='roxford')
+    # split_roxford_rparis_data(input_file = input_file, classes=17, \
+    #                           percent=0.5, train_or_test = 'test', dataset='roxford')
 
     input_file = './data/rparis_img_list.txt'
     split_roxford_rparis_data(input_file=input_file, classes=12, percent=0.5, train_or_test='test', dataset='rparis')

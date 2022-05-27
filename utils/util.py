@@ -221,9 +221,11 @@ class AverageMeter:
         fmtstr = '{name}:{val' + self.fmt + '}({avg' + self.fmt + '})'
         return fmtstr.format(**self.__dict__)
 
+
 def tensor_to_float(x):
     x_value = x if type(x) == float else x.item()
     return x_value
+
 
 def load_pretrained_model(model, pretrained_model_path, model_key_in_ckpt=None, logger=None):
     if os.path.isfile(pretrained_model_path):
@@ -271,7 +273,8 @@ class GradualWarmupScheduler(_LRScheduler):
     Proposed in 'Accurate, Large Minibatch SGD: Training ImageNet in 1 Hour'.
     Args:
         optimizer (Optimizer): Wrapped optimizer.
-        multiplier: target learning rate = base lr * multiplier if multiplier > 1.0. if multiplier = 1.0, lr starts from 0 and ends up with the base_lr.
+        multiplier: target learning rate = base lr * multiplier if multiplier > 1.0.
+                    if multiplier = 1.0, lr starts from 0 and ends up with the base_lr.
         total_epoch: target learning rate is reached at total_epoch, gradually
         after_scheduler: after target_epoch, use this scheduler(eg. ReduceLROnPlateau)
     """
@@ -303,7 +306,8 @@ class GradualWarmupScheduler(_LRScheduler):
     def step_ReduceLROnPlateau(self, metrics, epoch=None):
         if epoch is None:
             epoch = self.last_epoch + 1
-        self.last_epoch = epoch if epoch != 0 else 1  # ReduceLROnPlateau is called at the end of epoch, whereas others are called at beginning
+        # ReduceLROnPlateau is called at the end of epoch, whereas others are called at beginning
+        self.last_epoch = epoch if epoch != 0 else 1
         if self.last_epoch <= self.total_epoch:
             warmup_lr = [base_lr * ((self.multiplier - 1.) * self.last_epoch / self.total_epoch + 1.) for base_lr in
                          self.base_lrs]
