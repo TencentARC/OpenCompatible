@@ -31,7 +31,6 @@ def build_classifier(in_dim, out_dim, pretrained_weights):
 
 
 def build_model(config, logger):
-    #  new_model_type='resnet50', pretrained_backbone_path=None, old_model_type=None, old_backbone_path=None, class_num=1000, embedding_size=512
     new_model = build_backbone(model_type=config.new_model.arch,
                                class_num=config.dataset.class_num,
                                embedding_size=config.new_model.emb_dim)
