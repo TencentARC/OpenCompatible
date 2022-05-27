@@ -1,0 +1,58 @@
+{
+  "name": "old_resnet50",
+  "new_model": {
+    "arch": "resnet50",
+    "pretrained_model_path": null,
+    "model_key_in_ckpt": null,
+    "resume": null,
+    "emb_dim": 512
+  },
+  "old_model": {
+    "arch": null,
+    "pretrained_model_path": null,
+    "pretrained_classfier_path": null,
+    "model_key_in_ckpt": null,
+    "emb_dim": 512
+  },
+  "dataset": {
+    "type": "landamark",
+    "class_num": 91313,
+    "data_dir": null,
+    "img_size": 224
+  },
+  "test_dataset": {
+    "type": "landamark",
+    "name": "gldv2",
+    "data_dir": null,
+    "img_size": 224
+  },
+  "optimizer": {
+    "type": "sgd",
+    "lr": 1e-01,
+    "momentum": 0.9,
+    "weight_decay": 1e-4
+  },
+  "loss": {
+    "type": "softmax",
+    "scale": 30,
+    "margin": 0.3
+  },
+  "lr_scheduler": {
+    "type": "cosine",
+    "gamma": 0.1,
+    "lr_adjust_interval": 10
+  },
+  "trainer": {
+    "use_amp": true,
+    "epochs": 30,
+    "batch_size": 128,
+    "num_workers": 2,
+    "img_list_dir": "data/",
+    "train_img_list": null,
+    "save_dir": "saved/",
+    "save_period": 1,
+    "verbosity": 2,
+    "print_period": 1,
+    "tensorboard": true
+  }
+}
