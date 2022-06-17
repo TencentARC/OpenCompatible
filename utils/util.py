@@ -10,14 +10,18 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import torch
-
+from torch.optim.lr_scheduler import _LRScheduler
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from parse_config import ConfigParser
+
 
 
 def parser_option():
     parser = argparse.ArgumentParser(description='OpenCompatible Template')
-    # parser.add_argument('-c', '--config', default=None, type=str,
-    #                   help='config file path (default: None)')
+    parser.add_argument('--name', default=None, type=str,
+                        help='model name')
+    parser.add_argument('-c', '--config', default=None, type=str,
+                      help='config file path (default: None)')
     parser.add_argument('-d', '--device', default=None, type=str,
                         help='indices of GPUs to enable (default: all)')
     parser.add_argument('--world-size', default=-1, type=int,
@@ -38,16 +42,20 @@ def parser_option():
 
     parser.add_argument('--use_pos_sampler', action='store_true',
                         help='use the positive sampler or not')
-    parser.add_argument('--val_freq', default=5, type=int)
-    parser.add_argument('--save_freq', default=5, type=int)
     parser.add_argument('--use_amp', action='store_true')
 
     CustomArgs = collections.namedtuple('CustomArgs', 'flags default type help target')
     # parser options about model and dataset
     options = [
-        CustomArgs(['--train_data_dir'], default=None, type=str, help='train images txt', target='dataset;data_dir'),
-        CustomArgs(['--train_img_size'], default=224, type=int, help='train images size', target='dataset;img_size'),
+        CustomArgs(['--train_data_dir'], default=None, type=str, help='training image path', target='dataset;data_dir'),
+        CustomArgs(['--train_img_list'], default=None, type=str, help='training image list', target='dataset;img_list'),
+        CustomArgs(['--train_img_size'], default=224, type=int, help='training image size', target='dataset;img_size'),
+        CustomArgs(['--test_data_dir'], default=None, type=str, help='test image path', target='test_dataset;data_dir'),
         CustomArgs(['--test_img_size'], default=224, type=int, help='test images size', target='test_dataset;img_size'),
+        CustomArgs(['--arch'], default='resnet50', type=str, help='new model arch', target='new_model;arch'),
+        CustomArgs(['--old_arch'], default=None, type=str, help='old model arch', target='old_model;arch'),
+        CustomArgs(['--emb_dim'], default=512, type=int, help='embedding dimension', target='new_model;emb_dim'),
+        CustomArgs(['--old_emb_dim'], default=512, type=int, help='old embedding dimension', target='old_model;emb_dim'),
         CustomArgs(['--pretrained_model_path'], default=None, type=str, help='',
                    target='new_model;pretrained_model_path'),
         CustomArgs(['--model_key_in_ckpt'], default=None, type=str,
@@ -56,30 +64,32 @@ def parser_option():
         CustomArgs(['-r', '--resume'], default=None, type=str, help='',
                    target='path of the latest checkpoint (default: None)'),
         CustomArgs(['--class_num'], default=81313, type=int, help='', target='dataset;class_num'),
-        CustomArgs(['--emb_dim'], default=512, type=int, help='', target='new_model;emb_dim'),
         CustomArgs(['--old_pretrained_model_path'], default=None, type=str, help='',
                    target='old_model;pretrained_model_path'),
     ]
 
     # parser options about optimizer and lr scheduler
     options.extend([
-        CustomArgs(['--lr_scheduler_type'], default='cosine', type=str, help='Options: cosine or step',
+        CustomArgs(['--lr_scheduler'], default='cosine', type=str, help='Options: cosine or step',
                    target='lr_scheduler;type'),
         CustomArgs(['--lr_adjust_interval'], default=10, type=int, help='only works when scheduler is STEP type',
-                   target='lr_scheduler;type'),
-
-        CustomArgs(['--lr', '--learning_rate'], type=float, target='optimizer;lr'),
-        CustomArgs(['--bs', '--batch_size'], type=int, target='data_loader;batch_size')
+                   target='lr_scheduler;lr_adjust_interval'),
+        CustomArgs(['--lr'], default=0.1, type=float, help='', target='optimizer;lr'),
+        CustomArgs(['-e', '--epochs'], default=30, type=int, help='', target='trainer;epochs'),
+        CustomArgs(['-bs', '--batch_size'], default=192, type=int, help='', target='trainer;batch_size'),
+        CustomArgs(['--workers'], default=8, type=int, help='', target='trainer;num_workers'),
+        CustomArgs(['--save_period'], default=1, type=int, help='', target='trainer;save_period'),
+        CustomArgs(['--val_period'], default=5, type=int, help='', target='trainer;val_period'),
     ])
 
     # parser options about loss
     options.extend([
         CustomArgs(['--loss_func'], default='softmax', type=str, help='Options: softmax / arcface / cosface',
-                   target='lr_scheduler;type'),
+                   target='loss;type'),
         CustomArgs(['--arcface_scale'], default=30.0, type=float, help='',
-                   target='lr_scheduler;type'),
+                   target='loss;scale'),
         CustomArgs(['--arcface_margin'], default=0.3, type=float, help='',
-                   target='lr_scheduler;type'),
+                   target='loss;margin'),
     ])
 
     config = ConfigParser.from_args(parser, options)
@@ -94,18 +104,18 @@ def cudalize(model, args):
         # For multiprocessing distributed, DistributedDataParallel constructor
         # should always set the single device scope, otherwise,
         # DistributedDataParallel will use all available devices.
-        if args.gpu is not None:
-            torch.cuda.set_device(args.gpu)
-            model.cuda(args.gpu)
-            model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
+        if args.device is not None:
+            torch.cuda.set_device(args.device)
+            model.cuda(args.device)
+            model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.device], find_unused_parameters=True)
         else:
             model.cuda()
             # DistributedDataParallel will divide and allocate batch_size to all
             # available GPUs if device_ids are not set
             model = torch.nn.parallel.DistributedDataParallel(model, find_unused_parameters=True)
-    elif args.gpu is not None:
-        torch.cuda.set_device(args.gpu)
-        model = model.cuda(args.gpu)
+    elif args.device is not None:
+        torch.cuda.set_device(args.device)
+        model = model.cuda(args.device)
     else:
         # DataParallel will divide and allocate batch_size to all available GPUs
         if args.arch.startswith('alexnet') or args.arch.startswith('vgg'):
@@ -171,29 +181,6 @@ def prepare_device(n_gpu_use):
     return device, list_ids
 
 
-class MetricTracker:
-    def __init__(self, *keys, writer=None):
-        self.writer = writer
-        self._data = pd.DataFrame(index=keys, columns=['total', 'counts', 'average'])
-        self.reset()
-
-    def reset(self):
-        for col in self._data.columns:
-            self._data[col].values[:] = 0
-
-    def update(self, key, value, n=1):
-        if self.writer is not None:
-            self.writer.add_scalar(key, value)
-        self._data.total[key] += value * n
-        self._data.counts[key] += n
-        self._data.average[key] = self._data.total[key] / self._data.counts[key]
-
-    def avg(self, key):
-        return self._data.average[key]
-
-    def result(self):
-        return dict(self._data.average)
-
 
 class AverageMeter:
     """Computes and stores the average and current value"""
@@ -227,35 +214,40 @@ def tensor_to_float(x):
     return x_value
 
 
-def load_pretrained_model(model, pretrained_model_path, model_key_in_ckpt=None, logger=None):
+def load_pretrained_model(model, pretrained_model_path, model_key_in_ckpt=None, backbone_only=False, logger=None):
     if os.path.isfile(pretrained_model_path):
-        logger.info("=> loading pretrained_model from '{}'".format(pretrained_model_path))
+
         pretrained_model = torch.load(pretrained_model_path)
         if model_key_in_ckpt:
             pretrained_model = pretrained_model[model_key_in_ckpt]
+        if backbone_only:
+            pretrained_model = {".".join(("backbone", k)): v for k, v in pretrained_model.items()}
         unfit_keys = model.load_state_dict(pretrained_model, strict=False)
-        logger.info('=> these keys in model are not in state dict: {}'.format(unfit_keys.missing_keys))
-        logger.info('=> these keys in state dict are not in model: {}'.format(unfit_keys.unexpected_keys))
-        logger.info("=> loading done!")
+        if logger is not None:
+            logger.info("=> loading pretrained_model from '{}'".format(pretrained_model_path))
+            logger.info('=> these keys in model are not in state dict: {}'.format(unfit_keys.missing_keys))
+            logger.info('=> these keys in state dict are not in model: {}'.format(unfit_keys.unexpected_keys))
+            logger.info("=> loading done!")
     else:
-        logger.info("=> no pretrained_model found at '{}'".format(pretrained_model_path))
+        if logger is not None:
+            logger.info("=> no pretrained_model found at '{}'".format(pretrained_model_path))
 
 
 def resume_checkpoint(model, optimizer, grad_scaler, args, logger):
     ckpt_path = args.resume
     if os.path.isfile(ckpt_path):
         logger.info("=> resume checkpoint '{}'".format(ckpt_path))
-        if args.gpu is None:
+        if args.device is None:
             checkpoint = torch.load(ckpt_path, map_location=torch.device("cpu"))
         else:
             # Map model to be loaded to specified single gpu.
-            loc = 'cuda:{}'.format(args.gpu)
+            loc = 'cuda:{}'.format(args.device)
             checkpoint = torch.load(args.resume, map_location=loc)
         args.start_epoch = checkpoint['epoch']
         best_acc1 = checkpoint['best_acc1']
-        # if args.gpu is not None:
+        # if args.device is not None:
         #     # best_acc1 may be from a checkpoint from a different GPU
-        #     best_acc1 = best_acc1.to(args.gpu)
+        #     best_acc1 = best_acc1.to(args.device)
         model.load_state_dict(checkpoint['model'])
         optimizer.load_state_dict(checkpoint['optimizer'])
         if checkpoint['grad_scaler']:

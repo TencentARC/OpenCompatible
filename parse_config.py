@@ -1,12 +1,13 @@
+import argparse
 import logging
 import os
+import json
 from datetime import datetime
 from functools import reduce, partial
 from operator import getitem
 from pathlib import Path
-
+from collections import OrderedDict
 from logger import setup_logging
-from utils import read_json, write_json
 
 
 class ConfigParser:
@@ -21,13 +22,15 @@ class ConfigParser:
         exper_name = self.config['name']
         if run_id is None:  # use timestamp as default run-id
             run_id = datetime.now().strftime(r'%m%d_%H%M%S')
-        self._save_dir = save_dir / 'models' / exper_name / run_id
-        self._log_dir = save_dir / 'log' / exper_name / run_id
+        self._save_dir = save_dir / exper_name / run_id / 'models'
+        self._log_dir = save_dir / exper_name / run_id / 'log'
+        self.config["model_dir"] = self._save_dir
 
         # make directory for saving checkpoints and log.
         exist_ok = run_id == ''
         self.save_dir.mkdir(parents=True, exist_ok=exist_ok)
         self.log_dir.mkdir(parents=True, exist_ok=exist_ok)
+
 
         # save updated config file to the checkpoint dir
         write_json(self.config, self.save_dir / 'config.json')
@@ -42,9 +45,6 @@ class ConfigParser:
 
     @classmethod
     def from_args(cls, args, options=''):
-        """
-        Initialize this class from some cli arguments. Used in train, test.
-        """
         for opt in options:
             args.add_argument(*opt.flags, default=opt.default, type=opt.type, help=opt.help)
         if not isinstance(args, tuple):
@@ -63,42 +63,24 @@ class ConfigParser:
 
         config = read_json(cfg_fname)
         if args.config and resume:
-            # update new config for fine-tuning
             config.update(read_json(args.config))
 
-        # parse custom cli options into dictionary
-        modification = {opt.target: getattr(args, _get_opt_name(opt.flags)) for opt in options}
-        return cls(config, resume, modification)
+        # modified options
+        modified_keys, modified_dict = [], {}
+        # modification = {opt.target: getattr(args, _get_opt_name(opt.flags)) for opt in options}
+        for opt in options:
+            modified_key = _get_opt_name(opt.flags)
+            modified_dict[opt.target] = getattr(args, modified_key)
+            modified_keys.append(modified_key)
 
-    def init_obj(self, name, module, *args, **kwargs):
-        """
-        Finds a function handle with the name given as 'type' in config, and returns the
-        instance initialized with corresponding arguments given.
+        # new options
+        args_dict = vars(args)
+        for key in args_dict.keys():
+            if key not in modified_keys:
+                modified_dict[key] = args_dict[key]
 
-        `object = config.init_obj('name', module, a, b=1)`
-        is equivalent to
-        `object = module.name(a, b=1)`
-        """
-        module_name = self[name]['type']
-        module_args = dict(self[name]['args'])
-        assert all([k not in module_args for k in kwargs]), 'Overwriting kwargs given in config file is not allowed'
-        module_args.update(kwargs)
-        return getattr(module, module_name)(*args, **module_args)
+        return cls(config, resume, modified_dict)
 
-    def init_ftn(self, name, module, *args, **kwargs):
-        """
-        Finds a function handle with the name given as 'type' in config, and returns the
-        function with given arguments fixed with functools.partial.
-
-        `function = config.init_ftn('name', module, a, b=1)`
-        is equivalent to
-        `function = lambda *args, **kwargs: module.name(a, *args, b=1, **kwargs)`.
-        """
-        module_name = self[name]['type']
-        module_args = dict(self[name]['args'])
-        assert all([k not in module_args for k in kwargs]), 'Overwriting kwargs given in config file is not allowed'
-        module_args.update(kwargs)
-        return partial(getattr(module, module_name), *args, **module_args)
 
     def __getitem__(self, name):
         """Access items like ordinary dict."""
@@ -111,6 +93,11 @@ class ConfigParser:
         logger = logging.getLogger(name)
         logger.setLevel(self.log_levels[verbosity])
         return logger
+
+    def _update_config_by_dict(self, dict):
+        for key in dict.keys():
+            self.config[key] = dict[key]
+        write_json(self.config, self.save_dir / 'config.json')
 
     # setting read-only attributes
     @property
@@ -153,3 +140,13 @@ def _set_by_path(tree, keys, value):
 def _get_by_path(tree, keys):
     """Access a nested object in tree by sequence of keys."""
     return reduce(getitem, keys, tree)
+
+def read_json(fname):
+    fname = Path(fname)
+    with fname.open('rt') as handle:
+        return json.load(handle, object_hook=OrderedDict)
+
+def write_json(content, fname):
+    fname = Path(fname)
+    with fname.open('wt') as handle:
+        json.dump(content, handle, indent=4, sort_keys=False)

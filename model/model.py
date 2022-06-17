@@ -6,12 +6,12 @@ from base import BaseModel
 
 
 class Resnet_GeM(nn.Module):
-    def __init__(self, backbone, class_num, embedding_size):
+    def __init__(self, backbone, class_num, emb_dim):
         super().__init__()
         self.backbone = backbone
         self.backbone.avgpool = GeM()
-        self.fc_emb = nn.Linear(self.backbone.fc.in_features, embedding_size)
-        self.fc_classifier = nn.Linear(embedding_size, class_num, bias=False)
+        self.fc_emb = nn.Linear(self.backbone.fc.in_features, emb_dim)
+        self.fc_classifier = nn.Linear(emb_dim, class_num, bias=False)
         self.backbone.fc = nn.Identity()
 
     def forward(self, x, use_margin=False):

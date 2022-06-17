@@ -4,12 +4,12 @@ import torch.nn.functional as F
 
 
 class Resnet_GeM(nn.Module):
-    def __init__(self, backbone, num_classes, embedding_size):
+    def __init__(self, backbone, num_classes, emb_dim):
         super().__init__()
         self.backbone = backbone
         self.backbone.avgpool = GeM()
-        self.fc_emb = nn.Linear(self.backbone.fc.in_features, embedding_size)
-        self.fc_classify = nn.Linear(embedding_size, num_classes, bias=False)
+        self.fc_emb = nn.Linear(self.backbone.fc.in_features, emb_dim)
+        self.fc_classify = nn.Linear(emb_dim, num_classes, bias=False)
         self.backbone.fc = nn.Identity()
 
     def forward(self, x, use_cosine_cla_score=False):

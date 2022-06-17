@@ -1,6 +1,6 @@
 import os
 from abc import abstractmethod
-
+from pathlib import Path
 import torch
 
 from logger import TensorboardWriter
@@ -43,7 +43,7 @@ class BaseTrainer:
         """
         raise NotImplementedError
 
-    def _save_checkpoint(self, epoch, best_acc1):
+    def _save_checkpoint(self, epoch):
         """
         Saving checkpoints
 
@@ -54,12 +54,15 @@ class BaseTrainer:
             'epoch': epoch + 1,
             'arch': arch,
             'model': self.model.module.state_dict(),
-            'best_acc1': best_acc1,
+            'best_acc1': self.best_acc1,
             'optimizer': self.optimizer.state_dict(),
             'grad_scaler': self.grad_scaler.state_dict(),
             'config': self.config
         }
-        ckpt_path = os.path.join(self.checkpoint_dir, "ckpt", f'checkpoint_epoch{epoch + 1}.pth.tar')
+        save_dir = Path(os.path.join(self.checkpoint_dir, "ckpt"))
+        save_dir.mkdir(parents=True, exist_ok=True)
+        # ckpt_path = os.path.join(save_dir, f'checkpoint_epoch{epoch + 1}.pth.tar')
+        ckpt_path = save_dir / f'checkpoint_epoch{epoch + 1}.pth.tar'
         torch.save(checkpoint, ckpt_path)
         self.logger.info("Saving checkpoint: {} ...".format(ckpt_path))
 

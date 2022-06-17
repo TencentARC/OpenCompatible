@@ -1,12 +1,19 @@
 # Open Compatible Training Benchmark
 
+This repo supports a standard compatible training benchmark, covering practical training scenarios. 
+
+Three mainstreaming paradigms including feature-level forward compatibility, backfilling-free backward compatibility and hot-refresh backward compatibility are easily achieved using our benchmark.
 
 ## Requirements
 
-* Python >= 3.5 (3.6 recommended)
-* PyTorch >= 0.4 (1.2 recommended)
-* tqdm (Optional for `test.py`)
-* tensorboard >= 1.14 (see [Tensorboard Visualization](#tensorboard-visualization))
+* Python >= 3.6
+* PyTorch >= 1.6 (recommend 1.7)
+* tensorflow >= 2.1
+* termcolor
+* sklearn
+* faiss-gpu
+* numpy
+* tqdm
 
 ## Train on Landmark Retrieval Dataset
 
@@ -18,10 +25,9 @@
 
 ## License
 
-This project is licensed under the MIT License. See LICENSE for more details
+This project is licensed under the Apache v2 License.
 
 ## Acknowledgements
 
 This project is inspired by the
-project [Tensorflow-Project-Template](https://github.com/MrGemy95/Tensorflow-Project-Template)
-by [Mahmoud Gemy](https://github.com/MrGemy95)
+project [Pytorch-Template](https://github.com/victoresque/pytorch-template).

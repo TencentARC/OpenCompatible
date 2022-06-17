@@ -1,7 +1,7 @@
 import os
 import time
-
 import faiss
+import argparse
 import numpy as np
 import torch
 import torch.distributed as dist
@@ -10,39 +10,31 @@ from utils.util import AverageMeter
 from .roxford_rparis_metrics import calculate_mAP_roxford_rparis
 
 
-# import gc
-
-
-def evaluate_func(model, query_loader, gallery_loader, query_gts, logger, args, test_type='', model2=None,
+def evaluate_func(model, query_loader, gallery_loader, query_gts, logger, config, old_model=None,
                   dataset_name='gldv2'):
+    args = argparse.Namespace(**config.config)
     model.eval()
-    if model2 is not None:
-        model2.eval()
+    if old_model is None:   # self-model test
+        old_model = model
+    else:   # cross-model test
+        old_model.eval()
     test_time = time.time()
     logger.info("=> begin eval")
-    # query feat
-    if test_type == '' or test_type == 'bct':
-        extract_features(model, query_loader, 'q', logger, args)
-    else:
-        raise ValueError(f"unrecognized test_type: {test_type}")
-
-    # gallery feat
-    if test_type == 'bct':
-        extract_features(model2, gallery_loader, 'db', logger, args)  # use old_model to extract
-    else:
-        raise ValueError(f"unrecognized test_type: {test_type}")
-
+    # extract query feat with new model
+    extract_features(model, query_loader, 'q', logger, config)
+    # extract gallery feat with old/new model
+    extract_features(old_model, gallery_loader, 'g', logger, config)  # use old_model to extract
     dist.barrier()
     # torch.cuda.empty_cache()  # empty gpu cache if using faiss gpu index
 
-    if args.rank == 0:
+    if torch.distributed.get_rank() == 0:
         logger.info("=> concat feat and label file")
-        query_feats = concat_file(args, "feat_q", final_size=(len(query_loader.dataset), args.embedding_size))
-        query_labels = concat_file(args, "label_q", final_size=(len(query_loader.dataset),))
+        query_feats = concat_file(config._save_dir, "feat_q", final_size=(len(query_loader.dataset), args.new_model["emb_dim"]))
+        query_labels = concat_file(config._save_dir, "label_q", final_size=(len(query_loader.dataset),))
         query_labels = query_labels.astype(np.int32)
 
-        gallery_feats = concat_file(args, "feat_db", final_size=(len(gallery_loader.dataset), args.embedding_size))
-        gallery_labels = concat_file(args, "label_db", final_size=(len(gallery_loader.dataset),))
+        gallery_feats = concat_file(config._save_dir, "feat_g", final_size=(len(gallery_loader.dataset), args.new_model["emb_dim"]))
+        gallery_labels = concat_file(config._save_dir, "label_g", final_size=(len(gallery_loader.dataset),))
         gallery_labels = gallery_labels.astype(np.int32)
 
         logger.info("=> calculate rank")
@@ -65,12 +57,13 @@ def evaluate_func(model, query_loader, gallery_loader, query_gts, logger, args, 
 
 
 @torch.no_grad()
-def extract_features(model, data_loader, tag, logger, args):
+def extract_features(model, data_loader, tag, logger, config):
+    args = argparse.Namespace(**config.config)
     batch_time = AverageMeter('Process Time', ':6.3f')
     data_time = AverageMeter('Test Data Time', ':6.3f')
 
     labels_all = np.empty(len(data_loader.sampler), dtype=np.float32)
-    features_all = np.empty((len(data_loader.sampler), args.embedding_size), dtype=np.float32)
+    features_all = np.empty((len(data_loader.sampler), args.new_model["emb_dim"]), dtype=np.float32)
     pointer = 0
 
     end = time.time()
@@ -87,7 +80,7 @@ def extract_features(model, data_loader, tag, logger, args):
         batch_time.update(time.time() - end)
         end = time.time()
 
-        if i % args.print_freq == 0:
+        if i % args.trainer["print_period"] == 0:
             logger.info('Extract Features: [{}/{}]\t'
                         'Time {:.3f} ({:.3f})\t'
                         'Data {:.3f} ({:.3f})\t'
@@ -95,21 +88,21 @@ def extract_features(model, data_loader, tag, logger, args):
                                 batch_time.val, batch_time.avg,
                                 data_time.val, data_time.avg))
 
-    np.save(os.path.join(args.output, f'feat_{tag}_rank{dist.get_rank()}.npy'), features_all)
-    np.save(os.path.join(args.output, f'label_{tag}_rank{dist.get_rank()}.npy'), labels_all)
+    np.save(os.path.join(config._save_dir, f'feat_{tag}_rank{dist.get_rank()}.npy'), features_all)
+    np.save(os.path.join(config._save_dir, f'label_{tag}_rank{dist.get_rank()}.npy'), labels_all)
 
 
-def concat_file(args, file_name, final_size):
+def concat_file(_save_dir, file_name, final_size):
     concat_ret = np.empty(final_size, dtype=np.float32)
     pointer = 0
     for rank in range(dist.get_world_size()):
-        file_path = os.path.join(args.output, f"{file_name}_rank{rank}.npy")
+        file_path = os.path.join(_save_dir, f"{file_name}_rank{rank}.npy")
         data = np.load(file_path)
         data_size = data.shape[0]
         concat_ret[pointer:pointer + data_size] = data
         pointer += data_size
         os.remove(file_path)
-    save_path = os.path.join(args.output, f"{file_name}.npy")
+    save_path = os.path.join(_save_dir, f"{file_name}.npy")
     np.save(save_path, concat_ret)
     return concat_ret
 

@@ -1,5 +1,7 @@
 {
   "name": "old_resnet50",
+  "device": null,
+  "seed": null,
   "new_model": {
     "arch": "resnet50",
     "pretrained_model_path": null,
@@ -15,13 +17,14 @@
     "emb_dim": 512
   },
   "dataset": {
-    "type": "landamark",
+    "type": "landmark",
     "class_num": 91313,
     "data_dir": null,
+    "img_list": "./data/gldv2_debug.txt",
     "img_size": 224
   },
   "test_dataset": {
-    "type": "landamark",
+    "type": "landmark",
     "name": "gldv2",
     "data_dir": null,
     "img_size": 224
@@ -37,22 +40,29 @@
     "scale": 30,
     "margin": 0.3
   },
+  "comp_loss": {
+    "type": "bct",
+    "temperature": 0.01,
+    "distillation_temp": 0.01,
+    "focal_beta": 2,
+    "focal_alpha": 1
+  },
   "lr_scheduler": {
     "type": "cosine",
     "gamma": 0.1,
     "lr_adjust_interval": 10
   },
   "trainer": {
-    "use_amp": true,
     "epochs": 30,
     "batch_size": 128,
     "num_workers": 2,
-    "img_list_dir": "data/",
-    "train_img_list": null,
     "save_dir": "saved/",
     "save_period": 1,
+    "val_period": 5,
     "verbosity": 2,
     "print_period": 1,
     "tensorboard": true
-  }
+  },
+  "use_amp": true,
+  "use_pos_sampler": false
 }

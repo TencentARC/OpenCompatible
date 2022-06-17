@@ -1,3 +1,4 @@
+import argparse
 import os
 
 import torch
@@ -8,106 +9,113 @@ import torch.nn as nn
 import data_loader.data_loaders as module_data
 from model.build import build_model, build_lr_scheduler
 from trainer import LandmarkTrainer, FaceTrainer
-from utils import parser_option, cudalize, set_random_seed, resume_checkpoint
+from utils.util import parser_option, cudalize, set_random_seed, resume_checkpoint
 
 
 def main(config):
+    args = argparse.Namespace(**config.config)
     # fix random seeds for reproducibility
-    if config.seed is not None:
-        set_random_seed(config.seed)
+    if args.seed is not None:
+        set_random_seed(args.seed)
 
-    if config.dist_url == "env://" and config.world_size == -1:
-        config.world_size = int(os.environ["WORLD_SIZE"])
+    if args.dist_url == "env://" and args.world_size == -1:
+        args.world_size = int(os.environ["WORLD_SIZE"])
 
-    config.distributed = config.world_size > 1 or config.multiprocessing_distributed
-
+    args.distributed = args.world_size > 1 or args.multiprocessing_distributed
+    config._update_config_by_dict({"distributed": args.distributed})
+    # config.config["distributed"] = args.distributed
     ngpus_per_node = torch.cuda.device_count()
-    if config.multiprocessing_distributed:
-        # Since we have ngpus_per_node processes per node, the total world_size
-        # needs to be adjusted accordingly
-        config.world_size = ngpus_per_node * config.world_size
-        # Use torch.multiprocessing.spawn to launch distributed processes: the
-        # main_worker process function
-        torch.multiprocessing.spawn(main_worker, nprocs=ngpus_per_node, args=(ngpus_per_node, config, None))
+
+    if args.multiprocessing_distributed:
+        args.world_size = ngpus_per_node * args.world_size
+        torch.multiprocessing.spawn(main_worker, nprocs=ngpus_per_node, args=(ngpus_per_node, args, config))
     else:
-        # Simply call main_worker function
-        main_worker(config.device, ngpus_per_node, config)
+        main_worker(args.device, ngpus_per_node, config)
 
 
-def main_worker(device, ngpus_per_node, config):
-    if config.distributed:
-        if config.dist_url == "env://" and config.rank == -1:
-            config.rank = int(os.environ["RANK"])
-        if config.multiprocessing_distributed:
+def main_worker(device, ngpus_per_node, args, config):
+    assert device is not None, "only support gpu running"
+    torch.cuda.set_device(device)
+    args.device = device
+    if args.distributed:
+        if args.dist_url == "env://" and args.rank == -1:
+            args.rank = int(os.environ["RANK"])
+        if args.multiprocessing_distributed:
             # For multiprocessing distributed training, rank needs to be the
             # global rank among all the processes
-            config.rank = config.rank * ngpus_per_node + device
-        dist.init_process_group(backend=config.dist_backend, init_method=config.dist_url,
-                                world_size=config.world_size, rank=config.rank)
+            args.rank = args.rank * ngpus_per_node + device
+            config._update_config_by_dict({"rank": args.rank})
+        dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
+                                world_size=args.world_size, rank=args.rank)
         dist.barrier()
     cudnn.benchmark = True
 
-    if not config.multiprocessing_distributed or \
-            (config.multiprocessing_distributed and torch.distributed.get_rank() == 0):
-        is_print = True
+    if not args.multiprocessing_distributed or \
+            (args.multiprocessing_distributed and torch.distributed.get_rank() == 0):
+        logger = config.get_logger('train')
     else:
-        is_print = False
-    config["is_print"] = is_print
+        logger = None
 
-    logger = config.get_logger('train')
-
-    if config.dataset.type == 'landmark':
+    if args.dataset["type"] == 'landmark':
         # load training set
-        data_loader = module_data.GLDv2TrainDataLoader(config)
+        data_loader = module_data.GLDv2TrainDataset(args)
         train_loader, class_num = data_loader.train_loader, data_loader.class_num
-        # load evaluation set
-        data_loader = module_data.GLDv2EvalDataLoader(config)
-        eval_query_loader, eval_gallery_loader, eval_query_gts = data_loader.query_loader, \
-                                                                 data_loader.gallery_loader, data_loader.query_gts
-        # load test set
-        data_loader = module_data.GLDv2TestDataLoader(config)
-        test_query_loader, test_gallery_loader, test_query_gts = data_loader.query_loader, \
-                                                                 data_loader.gallery_loader, data_loader.query_gts
 
-    elif config.dataset.type == 'face':
-        data_loader = module_data.MS1Mv3TrainDataLoader(config)
+        # load evaluation set
+        data_loader = module_data.GLDv2EvalDataset(args)
+        eval_query_loader, eval_gallery_loader, eval_query_gts = data_loader.query_loader, \
+                                                                 data_loader.gallery_loader,\
+                                                                 data_loader.query_gts
+        # load test set
+        data_loader = module_data.GLDv2TestDataset(args)
+        test_query_loader, test_gallery_loader, test_query_gts = data_loader.query_loader, \
+                                                                 data_loader.gallery_loader,\
+                                                                 data_loader.query_gts
+
+    elif args.dataset["type"] == 'face':
+        data_loader = module_data.MS1Mv3TrainDataset(args)
     else:
         raise NotImplementedError
 
     # build model architecture
-    model = build_model(config, logger)
+    model = build_model(args, logger)
 
     # build solver
-    optimizer = torch.optim.SGD(model.parameters(), lr=config.optimizer.lr,
-                                momentum=config.optimizer.momentum,
-                                weight_decay=config.optimizer.weight_decay)
-    grad_scaler = torch.cuda.amp.GradScaler(enabled=config.trainer.use_amp)
+    optimizer = torch.optim.SGD(model.parameters(), lr=args.optimizer["lr"],
+                                momentum=args.optimizer["momentum"],
+                                weight_decay=args.optimizer["weight_decay"])
+    grad_scaler = torch.cuda.amp.GradScaler(enabled=args.use_amp)
 
     best_acc1 = 0.
 
-    if config.new_model.resume is not None:
+    if args.new_model["resume"] is not None:
         best_acc1 = resume_checkpoint(model, optimizer, grad_scaler, config, logger)
-    model = cudalize(model, config)
+    config._update_config_by_dict({"best_acc1": best_acc1})
+
+    model = cudalize(model, args)
 
     steps_per_epoch = len(train_loader)
-    lr_scheduler = build_lr_scheduler(config, optimizer, steps_per_epoch, sche_type=config.lr_scheduler.type)
+    lr_scheduler = build_lr_scheduler(args, optimizer, steps_per_epoch, sche_type=args.lr_scheduler["type"])
 
     # build loss
     criterion = {}
     criterion['base'] = nn.CrossEntropyLoss().cuda()
-    if config.dataset.type == 'landmark':
+    if args.dataset["type"] == 'landmark':
+        validation_loader_list = [eval_query_loader, eval_gallery_loader, eval_query_gts]
+        test_loader_list = [test_query_loader, test_gallery_loader, test_query_gts]
         trainer = LandmarkTrainer(model,
-                                  backward_compatible_training=False, \
-                                  train_loader=train_loader, \
-                                  criterion=criterion, \
-                                  optimizer=optimizer, \
-                                  grad_scaler=grad_scaler, \
-                                  config=config, \
-                                  device=device, \
-                                  validation_loader_list=[eval_query_loader, eval_gallery_loader, eval_query_gts], \
-                                  test_loader_list=[test_query_loader, test_gallery_loader, test_query_gts], \
+                                  back_comp_training=False,
+                                  for_comp_training=False,
+                                  train_loader=train_loader,
+                                  criterion=criterion,
+                                  optimizer=optimizer,
+                                  grad_scaler=grad_scaler,
+                                  config=config,
+                                  device=device,
+                                  validation_loader_list=validation_loader_list,
+                                  test_loader_list=test_loader_list,
                                   lr_scheduler=lr_scheduler)
-    elif config.dataset_type == 'face':
+    elif args.dataset["type"] == 'face':
         trainer = FaceTrainer()
     else:
         raise NotImplementedError

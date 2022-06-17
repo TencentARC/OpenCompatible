@@ -62,21 +62,14 @@ class Inception3(nn.Module):
 
     def __init__(
             self,
-            num_classes: int = 1000,
+            class_num: int = 1000,
+            emb_dim: int = 512,
             aux_logits: bool = True,
             transform_input: bool = False,
             inception_blocks: Optional[List[Callable[..., nn.Module]]] = None,
             init_weights: Optional[bool] = None,
-            old_fc=None,
-            use_feat=False,
-            norm_sm=False,
-            symmetrical_bct_loss=False
     ) -> None:
         super(Inception3, self).__init__()
-
-        self.use_feat = use_feat
-        self._norm_layer = norm_sm
-        self.symmetrical_bct_loss = symmetrical_bct_loss
 
         if inception_blocks is None:
             inception_blocks = [
@@ -122,10 +115,10 @@ class Inception3(nn.Module):
         self.dropout = nn.Dropout()
 
         self.AuxLogits: Optional[nn.Module] = None
-        if num_classes != 0:
+        if class_num != 0:
             if aux_logits:
-                self.AuxLogits = inception_aux(768, num_classes)
-            self.fc = nn.Linear(2048, num_classes)
+                self.AuxLogits = inception_aux(768, class_num)
+            self.fc_classifier = nn.Linear(2048, class_num)
         if init_weights:
             for m in self.modules():
                 if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
@@ -140,37 +133,8 @@ class Inception3(nn.Module):
                     nn.init.constant_(m.weight, 1)
                     nn.init.constant_(m.bias, 0)
 
-        if old_fc is not None:
-            if old_fc.endswith('.npy'):
-                # loaded weights should be n * d, n: num of classes, d: feature dimension
-                w_npy = np.load(old_fc)
-                n, d = w_npy.shape
-                self.old_fc = nn.Linear(d, n, bias=False)
-                with torch.no_grad():
-                    self.old_fc.weight.copy_(torch.from_numpy(w_npy).float())
-            elif old_fc.endswith('.pth') or old_fc.endswith('pth.tar'):
-                w_dict = torch.load(old_fc)["state_dict"]
-
-                value = w_dict['module.fc.weight']
-                n, d = value.shape
-                weight = value
-
-                value = w_dict['module.fc.bias']
-                bias = value
-                self.old_fc = nn.Linear(d, n, bias=True)
-                with torch.no_grad():
-                    self.old_fc.weight.copy_(weight)
-                    if type(w_dict) is dict and len(w_dict) > 1:
-                        self.old_fc.bias.copy_(bias)
-            else:
-                raise TypeError('Only .pth or .npy files are acceptable!')
-            # freeze old classifier for feature compatibility
-            for para in self.old_fc.parameters():
-                para.requires_grad = False
-            self.old_d = d
-            self.old_cls_num = n
-        else:
-            self.old_fc = None
+        self.emb_dim = emb_dim
+        self.fc_emb = nn.Linear(2048, emb_dim)
 
     def _transform_input(self, x: Tensor) -> Tensor:
         if self.transform_input:
@@ -180,7 +144,7 @@ class Inception3(nn.Module):
             x = torch.cat((x_ch0, x_ch1, x_ch2), 1)
         return x
 
-    def _forward(self, x: Tensor) -> Tuple[Tensor, Optional[Tensor]]:
+    def _forward(self, x: Tensor, use_margin=False) -> Tuple[Tensor, Optional[Tensor]]:
         # N x 3 x 299 x 299
         x = self.Conv2d_1a_3x3(x)
         # N x 32 x 149 x 149
@@ -231,34 +195,14 @@ class Inception3(nn.Module):
         x = torch.flatten(x, 1)
         # N x 2048
 
-        if not self.training or self.use_feat:
-            if self.old_fc is not None:
-                if self.old_d <= x.size(1):
-                    return F.normalize(x[:, :self.old_d], dim=1)
-                else:
-                    z = torch.zeros(x.size(0), self.old_d - x.size(1))
-                    z = z.cuda() if torch.cuda.is_available() else z
-                    x = torch.cat((x, z), 1)
-                    return F.normalize(x, dim=1)
-            else:
-                return F.normalize(x, dim=1)
+        x = self.fc_emb(x)
+        if use_margin:
+            cls_score = F.linear(F.normalize(x), F.normalize(self.fc_classifier.weight))
+        else:
+            cls_score = self.fc_classifier(x)
 
-        score = self.fc(x)
-        # N x 1000 (num_classes)
-        if self.old_fc is not None:
-            if self.old_d <= x.size(1):
-                x = x[:, :self.old_d]
-                old_score = self.old_fc(x)
-            else:
-                z = torch.zeros(x.size(0), self.old_d - x.size(1))
-                z = z.cuda() if torch.cuda.is_available() else z
-                x = torch.cat((x, z), 1)
-                old_score = self.old_fc(x)
-            return score, old_score, x
+        return x, cls_score
 
-        return score
-
-        # return x, aux
 
     @torch.jit.unused
     def eager_outputs(self, x: Tensor, aux: Optional[Tensor]) -> InceptionOutputs:
@@ -270,15 +214,6 @@ class Inception3(nn.Module):
     def forward(self, x: Tensor) -> InceptionOutputs:
         x = self._transform_input(x)
         return self._forward(x)
-
-        # x, aux = self._forward(x)
-        # aux_defined = self.training and self.aux_logits
-        # if torch.jit.is_scripting():
-        #     if not aux_defined:
-        #         warnings.warn("Scripted Inception3 always returns Inception3 Tuple")
-        #     return InceptionOutputs(x, aux)
-        # else:
-        #     return self.eager_outputs(x, aux)
 
 
 class InceptionA(nn.Module):
