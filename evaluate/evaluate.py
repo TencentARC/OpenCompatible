@@ -29,12 +29,16 @@ def evaluate_func(model, query_loader, gallery_loader, query_gts, logger, config
 
     if torch.distributed.get_rank() == 0:
         logger.info("=> concat feat and label file")
-        query_feats = concat_file(config._save_dir, "feat_q", final_size=(len(query_loader.dataset), args.new_model["emb_dim"]))
-        query_labels = concat_file(config._save_dir, "label_q", final_size=(len(query_loader.dataset),))
+        query_feats = concat_file(config._save_dir, "feat_q",
+                                  final_size=(len(query_loader.dataset), args.new_model["emb_dim"]))
+        query_labels = concat_file(config._save_dir, "label_q",
+                                   final_size=(len(query_loader.dataset),))
         query_labels = query_labels.astype(np.int32)
 
-        gallery_feats = concat_file(config._save_dir, "feat_g", final_size=(len(gallery_loader.dataset), args.new_model["emb_dim"]))
-        gallery_labels = concat_file(config._save_dir, "label_g", final_size=(len(gallery_loader.dataset),))
+        gallery_feats = concat_file(config._save_dir, "feat_g",
+                                    final_size=(len(gallery_loader.dataset), args.new_model["emb_dim"]))
+        gallery_labels = concat_file(config._save_dir, "label_g",
+                                     final_size=(len(gallery_loader.dataset),))
         gallery_labels = gallery_labels.astype(np.int32)
 
         logger.info("=> calculate rank")

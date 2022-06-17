@@ -16,8 +16,10 @@ from .sampler import DistributedClassSampler, SubsetRandomSampler
 
 # ImageFile.LOAD_TRUNCATED_IMAGES = True
 
+
 def default_loader(path):
     return Image.open(path).convert('RGB')
+
 
 def warning_loader(path):
     try:
@@ -26,6 +28,7 @@ def warning_loader(path):
     except(OSError, NameError):
         print('OSError, Path:', path)
         return None
+
 
 def default_flist_reader(flist):
     """
@@ -67,6 +70,7 @@ class ImageFilelist(Dataset):
     def __len__(self):
         return len(self.imlist)
 
+
 def generate_train_dataloder(data_set, distributed=False, batch_size=64, num_workers=32,
                        pin_memory=True, use_pos_sampler=False):
     if distributed:
@@ -80,6 +84,7 @@ def generate_train_dataloder(data_set, distributed=False, batch_size=64, num_wor
                         pin_memory=pin_memory, num_workers=num_workers, sampler=sampler)
     return loader
 
+
 def generate_test_loader(data_set, distributed=False, batch_size=64,
                          num_workers=32, pin_memory=True):
     if distributed:
@@ -90,6 +95,7 @@ def generate_test_loader(data_set, distributed=False, batch_size=64,
     return DataLoader(data_set, batch_size=batch_size, shuffle=False,
                       pin_memory=pin_memory, num_workers=num_workers,
                       sampler=sampler, drop_last=False)
+
 
 def GLDv2_train_dataloader(traindir, img_list, train_transform, distributed=False,
                            batch_size=64, num_workers=32, pin_memory=True,

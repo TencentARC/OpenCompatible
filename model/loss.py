@@ -18,22 +18,23 @@ def gather_tensor(raw_tensor):
     *** Warning ***: torch.distributed.all_gather has no gradient.
     """
     tensor_large = [torch.zeros_like(raw_tensor) \
-        for _ in range(dist.get_world_size())]
+                    for _ in range(dist.get_world_size())]
     dist.all_gather(tensor_large, raw_tensor.contiguous())
     tensor_large = torch.cat(tensor_large, dim=0)
     return tensor_large
 
+
 def euclidean_dist(x, y):
     m, n = x.size(0), y.size(0)
     dist_m = torch.pow(x, 2).sum(dim=1, keepdim=True).expand(m, n) + \
-           torch.pow(y, 2).sum(dim=1, keepdim=True).expand(n, m).t()
+             torch.pow(y, 2).sum(dim=1, keepdim=True).expand(n, m).t()
     dist_m.addmm_(x, y.t(), beta=1, alpha=-2)
     dist_m = dist_m.clamp(min=1e-12).sqrt()  # for numerical stability
     return dist_m
 
 
 def calculate_loss(feat_new, feat_old, feat_new_large, feat_old_large, \
-                   masks, loss_type, temp, criterion, loss_lambda=[1,1], topk_neg=-1):
+                   masks, loss_type, temp, criterion, loss_lambda=[1, 1], topk_neg=-1):
     B, D = feat_new.shape
     labels_idx = torch.arange(B) + torch.distributed.get_rank() * B
     if feat_new_large is None:
@@ -47,39 +48,39 @@ def calculate_loss(feat_new, feat_old, feat_new_large, feat_old_large, \
         logits_n2o_neg = logits_n2o_neg - masks * 1e9
         if topk_neg > 0:
             logits_n2o_neg = torch.topk(logits_n2o_neg, topk_neg, dim=1)[0]
-        logits_all = torch.cat((logits_n2o_pos, logits_n2o_neg), 1)   # B*(1+k)
+        logits_all = torch.cat((logits_n2o_pos, logits_n2o_neg), 1)  # B*(1+k)
         logits_all /= temp
 
         labels_idx = torch.zeros(B).long().cuda()
         loss = criterion(logits_all, labels_idx) * loss_lambda[0]
 
     elif (loss_type in ['contra_reg_free', 'contra_reg_free_dynamic']):
-        logits_n2o_pos = torch.bmm(feat_new.view(B, 1, D), feat_old.view(B, D, 1))   # B*1
-        logits_n2o_neg = torch.mm(feat_new, feat_old_large.permute(1, 0))   # B*B
+        logits_n2o_pos = torch.bmm(feat_new.view(B, 1, D), feat_old.view(B, D, 1))  # B*1
+        logits_n2o_neg = torch.mm(feat_new, feat_old_large.permute(1, 0))  # B*B
         logits_n2o_neg = logits_n2o_neg - masks * 1e9
-        logits_n2n_neg = torch.mm(feat_new, feat_new_large.permute(1, 0))   # B*B
+        logits_n2n_neg = torch.mm(feat_new, feat_new_large.permute(1, 0))  # B*B
         logits_n2n_neg = logits_n2n_neg - masks * 1e9
         if topk_neg > 0:
             logits_n2o_neg = torch.topk(logits_n2o_neg, topk_neg, dim=1)[0]
             logits_n2n_neg = torch.topk(logits_n2n_neg, topk_neg, dim=1)[0]
-        logits_all = torch.cat((logits_n2o_pos, logits_n2o_neg, logits_n2n_neg), 1)   # B*(1+2B)
+        logits_all = torch.cat((logits_n2o_pos, logits_n2o_neg, logits_n2n_neg), 1)  # B*(1+2B)
         logits_all /= temp
 
         labels_idx = torch.zeros(B).long().cuda()
         loss = criterion(logits_all, labels_idx) * loss_lambda[0]
 
     elif (loss_type in ['contra_reg_free_v2']):
-        logits_n2o_pos = torch.bmm(feat_new.view(B, 1, D), feat_old.view(B, D, 1))   # B*1
-        logits_n2o_neg = torch.mm(feat_new, feat_old_large.permute(1, 0))   # B*B
+        logits_n2o_pos = torch.bmm(feat_new.view(B, 1, D), feat_old.view(B, D, 1))  # B*1
+        logits_n2o_neg = torch.mm(feat_new, feat_old_large.permute(1, 0))  # B*B
         logits_n2o_neg = logits_n2o_neg - masks * 1e9
-        logits_n2n_neg = torch.mm(feat_new, feat_new_large.permute(1, 0))   # B*B
+        logits_n2n_neg = torch.mm(feat_new, feat_new_large.permute(1, 0))  # B*B
         logits_n2n_neg = logits_n2n_neg - masks * 1e9
         if topk_neg > 0:
             logits_n2o_neg = torch.topk(logits_n2o_neg, topk_neg, dim=1)[0]
             logits_n2n_neg = torch.topk(logits_n2n_neg, topk_neg, dim=1)[0]
 
         # new2old negative
-        logits_all = torch.cat((logits_n2o_pos, logits_n2o_neg), 1)   # B*(1+B)
+        logits_all = torch.cat((logits_n2o_pos, logits_n2o_neg), 1)  # B*(1+B)
         logits_all /= temp
         labels_idx = torch.zeros(B).long().cuda()
         loss = criterion(logits_all, labels_idx) * loss_lambda[0]
@@ -94,8 +95,8 @@ def calculate_loss(feat_new, feat_old, feat_new_large, feat_old_large, \
         logits_n2o_pos = torch.gather(logits_n2o, 1, labels_idx.view(-1, 1).cuda())
 
         # find the hardest negative
-        if topk_neg>0:
-            logits_n2o_neg = torch.topk(logits_n2o+masks*1e9, topk_neg, dim=1, largest=False)[0]
+        if topk_neg > 0:
+            logits_n2o_neg = torch.topk(logits_n2o + masks * 1e9, topk_neg, dim=1, largest=False)[0]
 
         logits_n2o_pos = logits_n2o_pos.expand_as(logits_n2o_neg).contiguous().view(-1)
         logits_n2o_neg = logits_n2o_neg.view(-1)
@@ -163,16 +164,16 @@ class BackwardCompatibleLoss(nn.Module):
             targets_large = gather_tensor(targets)
             batch_size_large = z_large.size(0)
             current_gpu = dist.get_rank()
-            masks = targets_large.expand(batch_size_large, batch_size_large).eq(targets_large.expand(batch_size_large, \
-                                                                                                     batch_size_large).t())
-            masks = masks[current_gpu*batch_size:(current_gpu+1)*batch_size,:]   # size: (B, B*n_gpus)
+            masks = targets_large.expand(batch_size_large, batch_size_large) \
+                .eq(targets_large.expand(batch_size_large, batch_size_large).t())
+            masks = masks[current_gpu * batch_size: (current_gpu + 1) * batch_size, :]  # size: (B, B*n_gpus)
         else:
             z_large, z_old_large = None, None
             masks = targets.expand(batch_size, batch_size).eq(targets.expand(batch_size, batch_size).t())
 
         # compute loss
         loss_comp = calculate_loss(z, z_old, z_large, z_old_large, masks, self.loss_type, self.temperature,
-                                        self.criterion, self.loss_lambda, self.topk_neg)
+                                   self.criterion, self.loss_lambda, self.topk_neg)
         return loss_comp
 
     def forward_with_gradient(self, inputs, inputs_old, targets):
@@ -189,13 +190,14 @@ class BackwardCompatibleLoss(nn.Module):
 
         # compute loss
         loss_comp = calculate_loss(z_large, z_old_large, targets_large, self.loss_type, self.temperature,
-                                        self.criterion, self.topk_neg)
+                                   self.criterion, self.topk_neg)
         return loss_comp
 
 
 class SupConLoss(nn.Module):
     """Supervised Contrastive Learning: https://arxiv.org/pdf/2004.11362.pdf.
     It also supports the unsupervised contrastive loss in SimCLR"""
+
     def __init__(self, temperature=0.07, contrast_mode='all',
                  base_temperature=0.07):
         super(SupConLoss, self).__init__()

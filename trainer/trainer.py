@@ -33,7 +33,6 @@ class LandmarkTrainer(BaseTrainer):
         self.do_validation = self.query_loader_public is not None
         self.lr_scheduler = lr_scheduler
 
-
     def train(self):
         """
         Full training logic
@@ -126,8 +125,6 @@ class LandmarkTrainer(BaseTrainer):
 
             self.lr_scheduler.step_update(epoch * self.len_epoch + batch_idx + 1)
 
-
-
     def _back_comp_train_epoch(self, epoch):
         batch_time = AverageMeter('BatchTime', ':6.3f')
         data_time = AverageMeter('DataTime', ':6.3f')
@@ -163,7 +160,8 @@ class LandmarkTrainer(BaseTrainer):
 
                 n2o_cls_score = self.model.old_classifier(feat)
 
-                # Point2center backward compatible loss (original BCT loss), from paper "Towards backward-compatible representation learning"
+                # Point2center backward compatible loss (original BCT loss),
+                # from paper "Towards backward-compatible representation learning"
                 if self.args.comp_loss["type"] == 'bct':
                     loss_back_comp = self.criterion['ce'](n2o_cls_score, labels)
                 else:
@@ -179,13 +177,15 @@ class LandmarkTrainer(BaseTrainer):
                         old_cls_score = self.model.old_classifier.module(old_feat)
                         old_cls_score = F.softmax(old_cls_score / self.args.comp_loss["distillation_temp"], dim=1)
                         loss_back_comp = -torch.sum(
-                            F.log_softmax(n2o_cls_score / self.args.comp_loss["temperature"]) * old_cls_score) / images.size(0)
+                            F.log_softmax(n2o_cls_score / self.args.comp_loss["temperature"]) * old_cls_score) \
+                                         / images.size(0)
                     elif self.args.comp_loss["type"] == 'fd':
                         criterion_mse = nn.MSELoss(reduce=False).cuda(self.args.device)
                         loss_back_comp = torch.mean(criterion_mse(feat, old_feat), dim=1)
                         predicted_target = cls_score.argmax(dim=1)
                         bool_target_is_match = (predicted_target == labels)
-                        focal_weight = self.args.comp_loss["focal_beta"] * bool_target_is_match + self.args.comp_loss["focal_alpha"]
+                        focal_weight = self.args.comp_loss["focal_beta"] * bool_target_is_match + self.args.comp_loss[
+                            "focal_alpha"]
                         loss_back_comp = torch.mul(loss_back_comp, focal_weight).mean()
                     elif self.args.comp_loss["type"] in ['contra', 'triplet', 'l2', 'ract']:
                         loss_back_comp = self.criterion['back_comp'](feat, old_feat, labels)

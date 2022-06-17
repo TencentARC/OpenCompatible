@@ -107,7 +107,9 @@ def cudalize(model, args):
         if args.device is not None:
             torch.cuda.set_device(args.device)
             model.cuda(args.device)
-            model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.device], find_unused_parameters=True)
+            model = torch.nn.parallel.DistributedDataParallel(model,
+                                                              device_ids=[args.device],
+                                                              find_unused_parameters=True)
         else:
             model.cuda()
             # DistributedDataParallel will divide and allocate batch_size to all

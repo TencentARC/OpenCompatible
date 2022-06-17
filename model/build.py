@@ -8,6 +8,7 @@ from utils.util import load_pretrained_model
 from .model import Resnet_GeM, BackwardCompatibleModel
 from .inception import Inception3
 
+
 def build_backbone(model_type="resnet50", class_num=1000, emb_dim=512):
     if model_type == "resnet50":
         backbone = torchvision.models.resnet50()

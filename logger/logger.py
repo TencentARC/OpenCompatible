@@ -22,6 +22,7 @@ def setup_logging(save_dir, log_config='logger/logger_config.json', default_leve
         print("Warning: logging configuration file is not found in {}.".format(log_config))
         logging.basicConfig(level=default_level)
 
+
 def read_json(fname):
     fname = Path(fname)
     with fname.open('rt') as handle:

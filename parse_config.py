@@ -141,10 +141,12 @@ def _get_by_path(tree, keys):
     """Access a nested object in tree by sequence of keys."""
     return reduce(getitem, keys, tree)
 
+
 def read_json(fname):
     fname = Path(fname)
     with fname.open('rt') as handle:
         return json.load(handle, object_hook=OrderedDict)
+
 
 def write_json(content, fname):
     fname = Path(fname)
