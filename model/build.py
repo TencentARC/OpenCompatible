@@ -65,7 +65,6 @@ def build_lr_scheduler(args, optimizer, steps_per_epoch, sche_type='cosine'):
         lr_scheduler = CosineLRScheduler(
             optimizer,
             t_initial=args.trainer["epochs"] * steps_per_epoch,
-            t_mul=1.,
             lr_min=args.optimizer["lr"] * 1e-2,
             warmup_lr_init=args.optimizer["lr"] * 1e-3,
             warmup_t=1 * steps_per_epoch,

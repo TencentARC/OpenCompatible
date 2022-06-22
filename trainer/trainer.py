@@ -15,14 +15,14 @@ class LandmarkTrainer(BaseTrainer):
     """
 
     def __init__(self, model, back_comp_training, for_comp_training, train_loader,
-                 criterion, optimizer, grad_scaler, config, device,
+                 criterion, optimizer, grad_scaler, args, config,
                  validation_loader_list=[None, None, None],
                  test_loader_list=[None, None, None],
                  lr_scheduler=None):
         super().__init__(model, train_loader, criterion, optimizer, grad_scaler, config)
-        self.args = argparse.Namespace(**config.config)
-        self.best_acc1 = self.args.best_acc1
-        self.device = device
+        self.args = args
+        self.best_acc1 = self.config.config["best_acc1"]
+        self.device = args.device
         self.len_epoch = len(self.train_loader)
 
         self.back_comp_training = back_comp_training

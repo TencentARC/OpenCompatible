@@ -1,5 +1,6 @@
 import argparse
 import os
+from datetime import timedelta
 
 import torch
 import torch.backends.cudnn as cudnn
@@ -23,7 +24,6 @@ def main(config):
 
     args.distributed = args.world_size > 1 or args.multiprocessing_distributed
     config._update_config_by_dict({"distributed": args.distributed})
-    # config.config["distributed"] = args.distributed
     ngpus_per_node = torch.cuda.device_count()
 
     if args.multiprocessing_distributed:
@@ -34,8 +34,6 @@ def main(config):
 
 
 def main_worker(device, ngpus_per_node, args, config):
-    assert device is not None, "only support gpu running"
-    torch.cuda.set_device(device)
     args.device = device
     if args.distributed:
         if args.dist_url == "env://" and args.rank == -1:
@@ -44,17 +42,20 @@ def main_worker(device, ngpus_per_node, args, config):
             # For multiprocessing distributed training, rank needs to be the
             # global rank among all the processes
             args.rank = args.rank * ngpus_per_node + device
-            config._update_config_by_dict({"rank": args.rank})
+            # config._update_config_by_dict({"rank": args.rank})
+            # config._update_config_by_dict({"device": args.device})
         dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
-                                world_size=args.world_size, rank=args.rank)
-        dist.barrier()
+                                world_size=args.world_size, rank=args.rank, timeout=timedelta(seconds=45))
+        # dist.barrier()
     cudnn.benchmark = True
 
-    if not args.multiprocessing_distributed or \
-            (args.multiprocessing_distributed and torch.distributed.get_rank() == 0):
-        logger = config.get_logger('train')
-    else:
-        logger = None
+    # if not args.multiprocessing_distributed or \
+    #         (args.multiprocessing_distributed and torch.distributed.get_rank() == 0):
+    #     logger = config.get_logger('train')
+    # else:
+    #     logger = None
+
+    logger = config.get_logger('train')
 
     if args.dataset["type"] == 'landmark':
         # load training set
@@ -89,7 +90,7 @@ def main_worker(device, ngpus_per_node, args, config):
     best_acc1 = 0.
 
     if args.new_model["resume"] is not None:
-        best_acc1 = resume_checkpoint(model, optimizer, grad_scaler, config, logger)
+        best_acc1 = resume_checkpoint(model, optimizer, grad_scaler, args, logger)
     config._update_config_by_dict({"best_acc1": best_acc1})
 
     model = cudalize(model, args)
@@ -110,8 +111,8 @@ def main_worker(device, ngpus_per_node, args, config):
                                   criterion=criterion,
                                   optimizer=optimizer,
                                   grad_scaler=grad_scaler,
+                                  args=args,
                                   config=config,
-                                  device=device,
                                   validation_loader_list=validation_loader_list,
                                   test_loader_list=test_loader_list,
                                   lr_scheduler=lr_scheduler)

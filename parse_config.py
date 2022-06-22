@@ -24,13 +24,12 @@ class ConfigParser:
             run_id = datetime.now().strftime(r'%m%d_%H%M%S')
         self._save_dir = save_dir / exper_name / run_id / 'models'
         self._log_dir = save_dir / exper_name / run_id / 'log'
-        self.config["model_dir"] = self._save_dir
 
         # make directory for saving checkpoints and log.
         exist_ok = run_id == ''
         self.save_dir.mkdir(parents=True, exist_ok=exist_ok)
         self.log_dir.mkdir(parents=True, exist_ok=exist_ok)
-
+        self.config["model_dir"] = str(self._save_dir.absolute())
 
         # save updated config file to the checkpoint dir
         write_json(self.config, self.save_dir / 'config.json')
