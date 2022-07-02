@@ -1,8 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-from base import BaseModel
+import numpy as np
 
 
 class Resnet_GeM(nn.Module):
@@ -14,15 +13,10 @@ class Resnet_GeM(nn.Module):
         self.fc_classifier = nn.Linear(emb_dim, class_num, bias=False)
         self.backbone.fc = nn.Identity()
 
-    def forward(self, x, use_margin=False):
+    def forward(self, x):
         x = self.backbone(x)
         x = self.fc_emb(x)
-        if use_margin:
-            cls_score = F.linear(F.normalize(x), F.normalize(self.fc_classifier.weight))
-        else:
-            cls_score = self.fc_classifier(x)
-
-        return x, cls_score
+        return x
 
 
 class GeM(nn.Module):
@@ -37,24 +31,26 @@ class GeM(nn.Module):
         # return F.lp_pool2d(F.threshold(x, eps, eps), p, (1, 1))  # alternative
 
 
-class BackwardCompatibleModel(BaseModel):
-    def __init__(self, old_model, new_model, old_classifier=None):
+class BackwardCompatibleModel(nn.Module):
+    def __init__(self, old_model, new_model):
         super(BackwardCompatibleModel, self).__init__()
         self.old_model = old_model
         self.new_model = new_model
-        if old_classifier is None:
-            self.old_classifier = self.old_model.fc_classifier
-        else:
-            self.old_classifier = old_classifier
-
-        for param in [self.old_model.parameters(), self.old_classifier.parameters()]:  # fix old parameters
+        # if old_classifier is None:
+        #     self.old_classifier = self.old_model.fc_classifier
+        # else:
+        #     self.old_classifier = old_classifier
+        #
+        for param in self.old_model.parameters():  # fix old parameters
             param.requires_grad = False
+        # for param in self.old_classifier.parameters():  # fix old parameters
+        #     param.requires_grad = False
 
         self.training = True
 
     def train(self):
         self.old_model.eval()  # switch to eval mode during the whole period
-        self.old_classifier.eval()
+        # self.old_classifier.eval()
         self.new_model.train()
         self.training = True
 
@@ -62,7 +58,17 @@ class BackwardCompatibleModel(BaseModel):
         self.new_model.eval()
         self.training = False
 
-    def forward(self, x_old, x_new):
-        old_feat = self.old_model(x_old).detach()
-        new_feat = self.new_model(x_new)
-        return old_feat, new_feat
+    def forward(self, x):
+        new_feat = self.new_model(x)
+        old_feat = self.old_model(x).detach()
+        return new_feat, old_feat
+
+    def __str__(self):
+        """
+        Model prints with number of trainable parameters
+        """
+        model_parameters = filter(lambda p: p.requires_grad, self.new_model.parameters())
+        params = sum([np.prod(p.size()) for p in model_parameters])
+        return super().__str__() + '\nTrainable parameters: {}'.format(params)
+
+

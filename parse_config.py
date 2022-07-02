@@ -7,7 +7,6 @@ from functools import reduce, partial
 from operator import getitem
 from pathlib import Path
 from collections import OrderedDict
-from logger import setup_logging
 
 
 class ConfigParser:
@@ -34,13 +33,6 @@ class ConfigParser:
         # save updated config file to the checkpoint dir
         write_json(self.config, self.save_dir / 'config.json')
 
-        # configure logging module
-        setup_logging(self.log_dir)
-        self.log_levels = {
-            0: logging.WARNING,
-            1: logging.INFO,
-            2: logging.DEBUG
-        }
 
     @classmethod
     def from_args(cls, args, options=''):
@@ -85,13 +77,6 @@ class ConfigParser:
         """Access items like ordinary dict."""
         return self.config[name]
 
-    def get_logger(self, name, verbosity=2):
-        msg_verbosity = 'verbosity option {} is invalid. Valid options are {}.'.format(verbosity,
-                                                                                       self.log_levels.keys())
-        assert verbosity in self.log_levels, msg_verbosity
-        logger = logging.getLogger(name)
-        logger.setLevel(self.log_levels[verbosity])
-        return logger
 
     def _update_config_by_dict(self, dict):
         for key in dict.keys():

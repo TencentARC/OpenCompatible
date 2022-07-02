@@ -10,8 +10,8 @@ from utils.util import AverageMeter
 from .roxford_rparis_metrics import calculate_mAP_roxford_rparis
 
 
-def evaluate_func(model, query_loader, gallery_loader, query_gts, logger, config, old_model=None,
-                  dataset_name='gldv2'):
+def evaluate_func(model, query_loader, gallery_loader, query_gts, logger,
+                  config, old_model=None, dataset_name='gldv2'):
     args = argparse.Namespace(**config.config)
     model.eval()
     if old_model is None:   # self-model test
@@ -27,6 +27,7 @@ def evaluate_func(model, query_loader, gallery_loader, query_gts, logger, config
     dist.barrier()
     # torch.cuda.empty_cache()  # empty gpu cache if using faiss gpu index
 
+    mAP = 0.0
     if torch.distributed.get_rank() == 0:
         logger.info("=> concat feat and label file")
         query_feats = concat_file(config._save_dir, "feat_q",
@@ -57,7 +58,7 @@ def evaluate_func(model, query_loader, gallery_loader, query_gts, logger, config
     # torch.cuda.empty_cache()
     test_time = time.time() - test_time
     logger.info(f"Testing takes {test_time / 60.0:.2f} minutes")
-    return mAP if args.rank == 0 else 0.0
+    return mAP
 
 
 @torch.no_grad()
@@ -75,7 +76,7 @@ def extract_features(model, data_loader, tag, logger, config):
         data_time.update(time.time() - end)
 
         with torch.cuda.amp.autocast(enabled=args.use_amp):
-            feat, _ = model(images.cuda())
+            feat = model(images.cuda())
         batchsize = labels.size(0)
         features_all[pointer:pointer + batchsize] = feat.cpu().numpy()
         labels_all[pointer:pointer + batchsize] = labels.numpy()

@@ -144,7 +144,7 @@ class Inception3(nn.Module):
             x = torch.cat((x_ch0, x_ch1, x_ch2), 1)
         return x
 
-    def _forward(self, x: Tensor, use_margin=False) -> Tuple[Tensor, Optional[Tensor]]:
+    def _forward(self, x: Tensor) -> Tuple[Tensor, Optional[Tensor]]:
         # N x 3 x 299 x 299
         x = self.Conv2d_1a_3x3(x)
         # N x 32 x 149 x 149
@@ -196,12 +196,7 @@ class Inception3(nn.Module):
         # N x 2048
 
         x = self.fc_emb(x)
-        if use_margin:
-            cls_score = F.linear(F.normalize(x), F.normalize(self.fc_classifier.weight))
-        else:
-            cls_score = self.fc_classifier(x)
-
-        return x, cls_score
+        return x
 
 
     @torch.jit.unused

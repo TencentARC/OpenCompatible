@@ -20,7 +20,7 @@
     "type": "landmark",
     "class_num": 91313,
     "data_dir": null,
-    "img_list": "./data/gldv2_debug.txt",
+    "img_list": "./annotation/gldv2_debug.txt",
     "img_size": 224
   },
   "test_dataset": {
@@ -43,9 +43,12 @@
   "comp_loss": {
     "type": "bct",
     "temperature": 0.01,
+    "triplet_margin": 0.8,
     "distillation_temp": 0.01,
-    "focal_beta": 2,
-    "focal_alpha": 1
+    "topk_neg": 10,
+    "focal_beta": 5.0,
+    "focal_alpha": 1.0,
+    "weight": 1.0
   },
   "lr_scheduler": {
     "type": "cosine",
@@ -57,12 +60,13 @@
     "batch_size": 128,
     "num_workers": 2,
     "save_dir": "saved/",
-    "save_period": 1,
+    "save_period": 2,
     "val_period": 5,
     "verbosity": 2,
     "print_period": 1,
     "tensorboard": true
   },
+  "gather_all": true,
   "use_amp": true,
   "use_pos_sampler": false
 }

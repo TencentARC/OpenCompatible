@@ -1,13 +1,7 @@
 import torch
 from torch import nn, Tensor
-from typing import Tuple
-from torch.autograd import Variable
-import random
-import warnings
-import numpy as np
 import torch.nn.functional as F
 import torch.distributed as dist
-from typing import Optional, Sequence
 
 __all__ = ['BackwardCompatibleLoss']
 
@@ -17,7 +11,7 @@ def gather_tensor(raw_tensor):
     Performs all_gather operation on the provided tensors.
     *** Warning ***: torch.distributed.all_gather has no gradient.
     """
-    tensor_large = [torch.zeros_like(raw_tensor) \
+    tensor_large = [torch.zeros_like(raw_tensor)
                     for _ in range(dist.get_world_size())]
     dist.all_gather(tensor_large, raw_tensor.contiguous())
     tensor_large = torch.cat(tensor_large, dim=0)
@@ -33,15 +27,16 @@ def euclidean_dist(x, y):
     return dist_m
 
 
-def calculate_loss(feat_new, feat_old, feat_new_large, feat_old_large, \
-                   masks, loss_type, temp, criterion, loss_lambda=[1, 1], topk_neg=-1):
+def calculate_loss(feat_new, feat_old, feat_new_large, feat_old_large,
+                   masks, loss_type, temp, criterion,
+                   loss_weight=1.0, topk_neg=-1):
     B, D = feat_new.shape
     labels_idx = torch.arange(B) + torch.distributed.get_rank() * B
     if feat_new_large is None:
         feat_new_large = feat_new
         feat_old_large = feat_old
 
-    if (loss_type == 'contra'):
+    if loss_type == 'contra':
         logits_n2o_pos = torch.bmm(feat_new.view(B, 1, D), feat_old.view(B, D, 1))  # B*1
         logits_n2o_pos = torch.squeeze(logits_n2o_pos, 1)
         logits_n2o_neg = torch.mm(feat_new, feat_old_large.permute(1, 0))  # B*B
@@ -52,10 +47,11 @@ def calculate_loss(feat_new, feat_old, feat_new_large, feat_old_large, \
         logits_all /= temp
 
         labels_idx = torch.zeros(B).long().cuda()
-        loss = criterion(logits_all, labels_idx) * loss_lambda[0]
+        loss = criterion(logits_all, labels_idx) * loss_weight
 
-    elif (loss_type in ['contra_reg_free', 'contra_reg_free_dynamic']):
+    elif loss_type == 'contra_ract':
         logits_n2o_pos = torch.bmm(feat_new.view(B, 1, D), feat_old.view(B, D, 1))  # B*1
+        logits_n2o_pos = torch.squeeze(logits_n2o_pos, 1)
         logits_n2o_neg = torch.mm(feat_new, feat_old_large.permute(1, 0))  # B*B
         logits_n2o_neg = logits_n2o_neg - masks * 1e9
         logits_n2n_neg = torch.mm(feat_new, feat_new_large.permute(1, 0))  # B*B
@@ -67,30 +63,9 @@ def calculate_loss(feat_new, feat_old, feat_new_large, feat_old_large, \
         logits_all /= temp
 
         labels_idx = torch.zeros(B).long().cuda()
-        loss = criterion(logits_all, labels_idx) * loss_lambda[0]
+        loss = criterion(logits_all, labels_idx) * loss_weight
 
-    elif (loss_type in ['contra_reg_free_v2']):
-        logits_n2o_pos = torch.bmm(feat_new.view(B, 1, D), feat_old.view(B, D, 1))  # B*1
-        logits_n2o_neg = torch.mm(feat_new, feat_old_large.permute(1, 0))  # B*B
-        logits_n2o_neg = logits_n2o_neg - masks * 1e9
-        logits_n2n_neg = torch.mm(feat_new, feat_new_large.permute(1, 0))  # B*B
-        logits_n2n_neg = logits_n2n_neg - masks * 1e9
-        if topk_neg > 0:
-            logits_n2o_neg = torch.topk(logits_n2o_neg, topk_neg, dim=1)[0]
-            logits_n2n_neg = torch.topk(logits_n2n_neg, topk_neg, dim=1)[0]
-
-        # new2old negative
-        logits_all = torch.cat((logits_n2o_pos, logits_n2o_neg), 1)  # B*(1+B)
-        logits_all /= temp
-        labels_idx = torch.zeros(B).long().cuda()
-        loss = criterion(logits_all, labels_idx) * loss_lambda[0]
-
-        # new2new negative
-        logits_all = torch.cat((logits_n2o_pos, logits_n2n_neg), 1)  # B*(1+2B)
-        logits_all /= temp
-        loss += criterion(logits_all, labels_idx) * loss_lambda[1]
-
-    elif (loss_type == 'triplet'):
+    elif loss_type == 'triplet':
         logits_n2o = euclidean_dist(feat_new, feat_old_large)
         logits_n2o_pos = torch.gather(logits_n2o, 1, labels_idx.view(-1, 1).cuda())
 
@@ -101,9 +76,9 @@ def calculate_loss(feat_new, feat_old, feat_new_large, feat_old_large, \
         logits_n2o_pos = logits_n2o_pos.expand_as(logits_n2o_neg).contiguous().view(-1)
         logits_n2o_neg = logits_n2o_neg.view(-1)
         hard_labels_idx = torch.ones_like(logits_n2o_pos)
-        loss = criterion(logits_n2o_neg, logits_n2o_pos, hard_labels_idx) * loss_lambda[0]
+        loss = criterion(logits_n2o_neg, logits_n2o_pos, hard_labels_idx) * loss_weight
 
-    elif (loss_type == 'triplet_reg_free'):
+    elif loss_type == 'triplet_ract':
         logits_n2o = euclidean_dist(feat_new, feat_old_large)
         logits_n2o_pos = torch.gather(logits_n2o, 1, labels_idx.view(-1, 1).cuda())
 
@@ -117,11 +92,12 @@ def calculate_loss(feat_new, feat_old, feat_new_large, feat_old_large, \
         logits_n2o_neg = logits_n2o_neg.view(-1)
         logits_n2n_neg = logits_n2n_neg.view(-1)
         hard_labels_idx = torch.ones_like(logits_n2o_pos)
-        loss = criterion(logits_n2o_neg, logits_n2o_pos, hard_labels_idx) * loss_lambda[0]
-        loss += criterion(logits_n2n_neg, logits_n2o_pos, hard_labels_idx) * loss_lambda[1]
+        loss = criterion(logits_n2o_neg, logits_n2o_pos, hard_labels_idx)
+        loss += criterion(logits_n2n_neg, logits_n2o_pos, hard_labels_idx)
+        loss *= loss_weight
 
-    elif (loss_type == 'l2'):
-        loss = criterion(feat_new, feat_old) * loss_lambda[0]
+    elif loss_type == 'l2':
+        loss = criterion(feat_new, feat_old) * loss_weight
 
     else:
         loss = 0.
@@ -130,67 +106,55 @@ def calculate_loss(feat_new, feat_old, feat_new_large, feat_old_large, \
 
 
 class BackwardCompatibleLoss(nn.Module):
-    def __init__(self, temp=0.05, margin=0.8, topk_neg=-1, loss_type='contra', loss_lambda=[1.0], gather_all=True):
+    def __init__(self, temp=0.01, margin=0.8, topk_neg=-1,
+                 loss_type='contra', loss_weight=1.0, gather_all=True):
         super(BackwardCompatibleLoss, self).__init__()
         self.temperature = temp
-        self.loss_lambda = loss_lambda
+        self.loss_weight = loss_weight
         self.topk_neg = topk_neg
-        if (loss_type in ['contra', 'contra_reg_free', 'contra_reg_free_v2']):
+
+        #   loss_type options:
+        #   - contra
+        #   - triplet
+        #   - l2
+        #   - contra_ract (paper: "")
+        #   - triplet_ract
+        if loss_type in ['contra', 'contra_ract']:
             self.criterion = nn.CrossEntropyLoss().cuda()
-        elif (loss_type == ['contra_reg_free_dynamic']):
-            self.criterion = nn.CrossEntropyLoss(reduction='none').cuda()
-        elif (loss_type in ['triplet', 'triplet_reg_free']):
+        elif loss_type in ['triplet', 'triplet_ract']:
             assert topk_neg > 0, \
                 "Please select top-k negatives for triplet loss"
             # not use nn.TripletMarginLoss()
             self.criterion = nn.MarginRankingLoss(margin=margin).cuda()
-        elif (loss_type == 'l2'):
+        elif loss_type == 'l2':
             self.criterion = nn.MSELoss().cuda()
         else:
             raise NotImplementedError("Unknown loss type: {}".format(loss_type))
         self.loss_type = loss_type
         self.gather_all = gather_all
 
-    def forward(self, inputs, inputs_old, targets):
+    def forward(self, feat, feat_old, targets):
         # features l2-norm
-        z = F.normalize(inputs, dim=1, p=2)
-        z_old = F.normalize(inputs_old, dim=1, p=2).detach()
-        batch_size = z.size(0)
-
+        feat = F.normalize(feat, dim=1, p=2)
+        feat_old = F.normalize(feat_old, dim=1, p=2).detach()
+        batch_size = feat.size(0)
         # gather tensors from all GPUs
         if self.gather_all:
-            z_large = gather_tensor(z)
-            z_old_large = gather_tensor(z_old)
+            feat_large = gather_tensor(feat)
+            feat_old_large = gather_tensor(feat_old)
             targets_large = gather_tensor(targets)
-            batch_size_large = z_large.size(0)
+            batch_size_large = feat_large.size(0)
             current_gpu = dist.get_rank()
             masks = targets_large.expand(batch_size_large, batch_size_large) \
                 .eq(targets_large.expand(batch_size_large, batch_size_large).t())
             masks = masks[current_gpu * batch_size: (current_gpu + 1) * batch_size, :]  # size: (B, B*n_gpus)
         else:
-            z_large, z_old_large = None, None
+            feat_large, feat_old_large = None, None
             masks = targets.expand(batch_size, batch_size).eq(targets.expand(batch_size, batch_size).t())
 
         # compute loss
-        loss_comp = calculate_loss(z, z_old, z_large, z_old_large, masks, self.loss_type, self.temperature,
-                                   self.criterion, self.loss_lambda, self.topk_neg)
-        return loss_comp
-
-    def forward_with_gradient(self, inputs, inputs_old, targets):
-        if not self.no_norm:
-            # features l2-norm
-            z = F.normalize(inputs, dim=1, p=2)
-            z_old = F.normalize(inputs_old, dim=1, p=2)
-        else:
-            z = inputs
-            z_old = inputs_old
-        z_large = gather_tensor(z)
-        z_old_large = gather_tensor(z_old)
-        targets_large = gather_tensor(targets)
-
-        # compute loss
-        loss_comp = calculate_loss(z_large, z_old_large, targets_large, self.loss_type, self.temperature,
-                                   self.criterion, self.topk_neg)
+        loss_comp = calculate_loss(feat, feat_old, feat_large, feat_old_large, masks, self.loss_type, self.temperature,
+                                   self.criterion, self.loss_weight, self.topk_neg)
         return loss_comp
 
 

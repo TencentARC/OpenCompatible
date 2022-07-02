@@ -10,11 +10,13 @@ import torch.nn as nn
 import data_loader.data_loaders as module_data
 from model.build import build_model, build_lr_scheduler
 from trainer import LandmarkTrainer, FaceTrainer
+from logger.logger import create_logger
 from utils.util import parser_option, cudalize, set_random_seed, resume_checkpoint
 
 
 def main(config):
     args = argparse.Namespace(**config.config)
+
     # fix random seeds for reproducibility
     if args.seed is not None:
         set_random_seed(args.seed)
@@ -42,21 +44,16 @@ def main_worker(device, ngpus_per_node, args, config):
             # For multiprocessing distributed training, rank needs to be the
             # global rank among all the processes
             args.rank = args.rank * ngpus_per_node + device
-            # config._update_config_by_dict({"rank": args.rank})
-            # config._update_config_by_dict({"device": args.device})
+            config._update_config_by_dict({"rank": args.rank})
+            config._update_config_by_dict({"device": args.device})
         dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
                                 world_size=args.world_size, rank=args.rank, timeout=timedelta(seconds=45))
         # dist.barrier()
     cudnn.benchmark = True
 
-    # if not args.multiprocessing_distributed or \
-    #         (args.multiprocessing_distributed and torch.distributed.get_rank() == 0):
-    #     logger = config.get_logger('train')
-    # else:
-    #     logger = None
+    logger = create_logger(output_dir=config.log_dir, dist_rank=args.rank, name='train')
 
-    logger = config.get_logger('train')
-
+    logger.info("Setup dataset...")
     if args.dataset["type"] == 'landmark':
         # load training set
         data_loader = module_data.GLDv2TrainDataset(args)
@@ -77,6 +74,7 @@ def main_worker(device, ngpus_per_node, args, config):
         data_loader = module_data.MS1Mv3TrainDataset(args)
     else:
         raise NotImplementedError
+
 
     # build model architecture
     model = build_model(args, logger)
@@ -105,14 +103,14 @@ def main_worker(device, ngpus_per_node, args, config):
         validation_loader_list = [eval_query_loader, eval_gallery_loader, eval_query_gts]
         test_loader_list = [test_query_loader, test_gallery_loader, test_query_gts]
         trainer = LandmarkTrainer(model,
-                                  back_comp_training=False,
-                                  for_comp_training=False,
+                                  comp_training=None,
                                   train_loader=train_loader,
                                   criterion=criterion,
                                   optimizer=optimizer,
                                   grad_scaler=grad_scaler,
                                   args=args,
                                   config=config,
+                                  logger=logger,
                                   validation_loader_list=validation_loader_list,
                                   test_loader_list=test_loader_list,
                                   lr_scheduler=lr_scheduler)

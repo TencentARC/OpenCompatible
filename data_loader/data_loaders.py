@@ -43,9 +43,9 @@ class GLDv2EvalDataset(DataLoader):
         if args.test_dataset["data_dir"] is None:
             args.test_dataset["data_dir"] = args.dataset["data_dir"]
         query_dir, gallery_dir = args.test_dataset["data_dir"], args.test_dataset["data_dir"]
-        query_img_list = os.path.join('data/gldv2', "gldv2_public_query_list.txt")
-        gallery_img_list = os.path.join('data/gldv2', "gldv2_gallery_list.txt")
-        query_gts_list = os.path.join('data/gldv2', "gldv2_public_query_gt.txt")
+        query_img_list = os.path.join('annotation/gldv2', "gldv2_public_query_list.txt")
+        gallery_img_list = os.path.join('annotation/gldv2', "gldv2_gallery_list.txt")
+        query_gts_list = os.path.join('annotation/gldv2', "gldv2_public_query_gt.txt")
         self.query_loader, self.gallery_loader, self.query_gts = \
             GLDv2_test_dataloader(query_dir, query_img_list, gallery_dir,
                                   gallery_img_list, query_gts_list, transform=val_trans,
@@ -68,9 +68,9 @@ class GLDv2TestDataset(DataLoader):
         if args.test_dataset["data_dir"] is None:
             args.test_dataset["data_dir"] = args.dataset["data_dir"]
         query_dir, gallery_dir = args.test_dataset["data_dir"], args.test_dataset["data_dir"]
-        query_img_list = os.path.join('data/gldv2', "gldv2_private_query_list.txt")
-        gallery_img_list = os.path.join('data/gldv2', "gldv2_gallery_list.txt")
-        query_gts_list = os.path.join('data/gldv2', "gldv2_private_query_gt.txt")
+        query_img_list = os.path.join('annotation/gldv2', "gldv2_private_query_list.txt")
+        gallery_img_list = os.path.join('annotation/gldv2', "gldv2_gallery_list.txt")
+        query_gts_list = os.path.join('annotation/gldv2', "gldv2_private_query_gt.txt")
         self.query_loader, self.gallery_loader, self.query_gts = \
             GLDv2_test_dataloader(query_dir, query_img_list, gallery_dir,
                                   gallery_img_list, query_gts_list, transform=val_trans,
@@ -91,7 +91,7 @@ class ROxfordTestDataLoader(DataLoader):
             normalize,
         ])
         test_dataset_name = args.test_dataset["name"]
-        pkl_path = os.path.join('data/roxford', f"{test_dataset_name}.pkl")
+        pkl_path = os.path.join('annotation/roxford', f"{test_dataset_name}.pkl")
 
         assert args.test_dataset["data_dir"] is not None
         query_dir, gallery_dir = args.test_dataset["data_dir"], args.test_dataset["data_dir"]

@@ -36,25 +36,24 @@ def build_model(args, logger):
         load_pretrained_model(new_model,
                               pretrained_model_path=args.new_model["pretrained_model_path"],
                               model_key_in_ckpt=args.new_model["model_key_in_ckpt"],
-                              backbone_only=True,
                               logger=logger)
 
     # load old model to train new compatible model
     if args.old_model["arch"] is not None:
         old_model = build_backbone(model_type=args.old_model["arch"],
                                    class_num=args.dataset["class_num"],
-                                   emb_dim=args.old_model["old_emb_dim"])
+                                   emb_dim=args.old_model["emb_dim"])
         load_pretrained_model(old_model,
                               pretrained_model_path=args.old_model["pretrained_model_path"],
                               model_key_in_ckpt=args.old_model["model_key_in_ckpt"],
                               logger=logger)
 
-        if args.old_model["pretrained_classfier_path"] is not None:
-            old_classfier = build_classifier(in_dim=args.old_model["emb_dim"], out_dim=args.dataset["class_num"])
-        else:
-            old_classfier = None
+        # if args.old_model["pretrained_classfier_path"] is not None:
+        #     old_classfier = build_classifier(in_dim=args.old_model["emb_dim"], out_dim=args.dataset["class_num"])
+        # else:
+        #     old_classfier = None
 
-        back_comp_model = BackwardCompatibleModel(old_model, new_model, old_classfier)
+        back_comp_model = BackwardCompatibleModel(old_model, new_model)
         return back_comp_model
     else:
         return new_model
@@ -80,7 +79,6 @@ def build_lr_scheduler(args, optimizer, steps_per_epoch, sche_type='cosine'):
             warmup_t=1 * steps_per_epoch,
             t_in_epochs=False,
         )
-        # lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_adjust_interval, gamma=0.1)
     else:
         print(f"{sche_type} not supported.")
         raise NotImplementedError
